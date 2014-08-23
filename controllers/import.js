@@ -5,6 +5,44 @@ var extend = require('extend');
 var mongo = require('mongodb');
 var decimal = require('decimal');
 
+var Doc = require('../models/doc');
+var Page = require('../models/page');
+var Category = require('../models/category');
+var Income = require('../models/income');
+
+exports.dsbudget = function(req, res) {
+    if(req.user) {
+        var docid = new mongo.ObjectID(req.body.docid);
+        var importtype = req.body.importtype;
+        var import_opts = {fd: req.body.fd};
+        Doc.getAuth(req.user, docid, function(err, auth) {
+            if(auth.canwrite) {
+                //parse the xml
+                var path = req.files.file.path;
+                //console.log(path); // like ... /tmp/29315-1n858ly.jpg
+                switch(importtype) {
+                case "dsbudget":
+                    doimport(docid, path, import_opts, function(err) {
+                        if(err) {
+                            console.log("returning error:"+err);
+                            res.statusCode = 500;
+                            res.write(err);
+                        } else {
+                            //all good
+                            res.statusCode = 200;
+                        }
+                        res.end();
+                    }); 
+                    break;
+                }
+            } else {
+                res.statuCode = 403; //forbidden
+                res.end();
+            }
+        });
+    }
+};
+
 String.prototype.insert = function (index, string) {
   if (index > 0)
     return this.substring(0, index) + string + this.substring(index, this.length);
@@ -12,7 +50,7 @@ String.prototype.insert = function (index, string) {
     return string + this;
 };
 
-function process_page(model, doc_id, opts, page, next_page) {
+function process_page(doc_id, opts, page, next_page) {
     //skip "New Page"
     if(page.$.ctime == 0) {
         next_page();
@@ -51,7 +89,7 @@ function process_page(model, doc_id, opts, page, next_page) {
         */
     };
 
-    model.Page.create(db_page, function(err, page_id) {
+    Page.create(db_page, function(err, page_id) {
         function parse_deductions(name, deductions, next) {
             var db_deduction_category = {
                 page_id: page_id,
@@ -78,7 +116,7 @@ function process_page(model, doc_id, opts, page, next_page) {
                 db_deduction_category.expenses.push(db_expense);
                 next_deduction();
             }, function() {
-                model.Category.create(db_deduction_category, function(err, category_id) {
+                Category.create(db_deduction_category, function(err, category_id) {
                     if(err) throw err;
                     next();
                 });
@@ -96,7 +134,7 @@ function process_page(model, doc_id, opts, page, next_page) {
                 db_income.name = income.$.desc;
                 db_income.amount = parse_amount(income.$.amount);
             }
-            model.Income.create(db_income, function(err, income_id) {
+            Income.create(db_income, function(err, income_id) {
                 //console.log("creating income");
                 //console.dir(db_income);
                 if(err) throw err;
@@ -176,7 +214,7 @@ function process_page(model, doc_id, opts, page, next_page) {
                                 name: db_category.name + " (Recurring)",
                                 expenses: recurring_expenses
                             });
-                            model.Category.create(db_cat, function(err, category_id) {
+                            Category.create(db_cat, function(err, category_id) {
                                 if(err) throw err;
                                 next_type();
                             });
@@ -192,7 +230,7 @@ function process_page(model, doc_id, opts, page, next_page) {
                             is_budget_per: (category.$.amount_is_percentage == "true" ? true : false),
                             expenses: non_recurring_expenses
                         });
-                        model.Category.create(db_cat, function(err, category_id) {
+                        Category.create(db_cat, function(err, category_id) {
                             if(err) throw err;
                             next_type();
                         });
@@ -230,9 +268,9 @@ function process_page(model, doc_id, opts, page, next_page) {
     });
 }
 
-function reset_balance(model, docid, callback) {
+function reset_balance(docid, callback) {
     //reset _balance_from reference with actual page_id
-    model.Page.findByDocID(docid, function(err, doc_pages) {
+    Page.findByDocID(docid, function(err, doc_pages) {
         function findPageByName(name) {
             for(var i in doc_pages) {
                 var searching_doc_page = doc_pages[i];
@@ -252,7 +290,7 @@ function reset_balance(model, docid, callback) {
                 if(balance_page.balance_to) {
                     console.log("balance_to on page "+balance_page._id+" is already set to "+balance_page.balance_to);
                     //turn it into real balance with amount:0
-                    model.Income.update(doc_income._id, {
+                    Income.update(doc_income._id, {
                         $set: {
                             amount: '0',
                             name: "Invalid balance originally from "+doc_income._balance_from+" (only 1 child page allowed)"
@@ -260,7 +298,7 @@ function reset_balance(model, docid, callback) {
                         $unset: {_balance_from: 1}
                     }, next); 
                 } else {
-                    model.Income.update(doc_income._id, {
+                    Income.update(doc_income._id, {
                         $set: {
                             balance_from: balance_page._id
                         },
@@ -268,7 +306,7 @@ function reset_balance(model, docid, callback) {
                     }, function() {
                         //update balance_to on page also
                         //console.log("setting balance_to on "+balance_page._id+" to be "+doc_income._id);
-                        model.Page.update(balance_page._id, {
+                        Page.update(balance_page._id, {
                             $set: { balance_to: doc_income._id }
                         }, next);
                     });
@@ -279,7 +317,7 @@ function reset_balance(model, docid, callback) {
         }
 
         async.forEach(doc_pages, function(doc_page, next_doc_page) {
-            model.Income.findByPageID(doc_page._id, function(err, doc_incomes) {
+            Income.findByPageID(doc_page._id, function(err, doc_incomes) {
                 if(err) {
                     consooe.log("failed to find incomes by page id " + doc_page._id);
                 } else {
@@ -290,7 +328,7 @@ function reset_balance(model, docid, callback) {
     });
 }
 
-exports.dsbudget = function(model, docid, path, opts, callback) {
+function doimport(docid, path, opts, callback) {
     fs.readFile(path, function(err, data) {
         if(err) {
             callback(err);
@@ -305,12 +343,12 @@ exports.dsbudget = function(model, docid, path, opts, callback) {
                     //var openpage = doc.Budget.$.openpage;
                     var pages = doc.Budget.Page;
                     async.forEach(pages, function(page, next) {
-                        process_page(model, docid, opts, page, next);
+                        process_page(docid, opts, page, next);
                     }, function(err) {
                         if(err) {
                             callback("Failed to process a page");
                         } else {
-                            reset_balance(model, docid, callback);
+                            reset_balance(docid, callback);
                         }
                     });
                 }

@@ -1,7 +1,7 @@
 <% include head.ejs %>
 <% include navbar.ejs %>
-<link rel="stylesheet" href="/static/colorpicker/colorpicker.css">
-<script src="/static/colorpicker/bootstrap-colorpicker-module.js"></script>
+<link rel="stylesheet" href="/js/colorpicker/colorpicker.css">
+<script src="/js/colorpicker/bootstrap-colorpicker-module.js"></script>
 
 <script>
 var dsApp = angular.module('dsApp', ['ngRoute', 'ui.bootstrap', 'angularFileUpload', 'colorpicker.module']);
@@ -49,11 +49,11 @@ dsApp.directive('ngConfirmClick', [
 dsApp.config(['$routeProvider', function($routeProvider) {
     $routeProvider.
     when('/', {
-        templateUrl: '/static/page-list.html',
+        templateUrl: '/tmpl/page-list.html',
         controller: 'PageListCtrl'
     }).
     when('/:id', {
-        templateUrl: '/static/page-detail.html',
+        templateUrl: '/tmpl/page-detail.html',
         controller: 'PageDetailCtrl'
     }).
     otherwise({

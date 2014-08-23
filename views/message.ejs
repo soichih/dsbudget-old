@@ -1,14 +1,29 @@
 <%
-var messages = req.flash('error');
-messages.forEach(function(message) {
-    %>
-    <div class="alert alert-danger"><%=message%></div>
-    <%
-});
-messages = req.flash('info');
-messages.forEach(function(message) {
-    %>
-    <div class="alert alert-info"><%=message%></div>
-    <%
-});
+console.log("dumping messages");
+console.dir(messages);
+
+if(messages.error) {
+    messages.error.forEach(function(error) {
+        %>
+        <div class="alert alert-danger fade in"><%=error.msg%></div>
+        <%
+    });
+}
+
+if(messages.info) {
+    messages.info.forEach(function(info) {
+        %>
+        <div class="alert alert-info fade in"><%=info.msg%></div>
+        <%
+    });
+}
+
+if(messages.success) {
+    messages.success.forEach(function(success) {
+        %>
+        <div class="alert alert-success fade in"><%=success.msg%></div>
+        <%
+    });
+}
+
 %>

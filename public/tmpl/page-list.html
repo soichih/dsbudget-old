@@ -55,7 +55,7 @@
     </div>
     <div class="modal-footer">
         <button type="submit" class="btn btn-primary" ng-disabled="showprogress">Import</button>
-        <button class="btn btn-default" data-dismiss="modal" ng-disabled="showprogress">Cancel</button>
+        <button type="button" class="btn btn-default" ng-click="cancel()" ng-disabled="showprogress">Cancel</button>
     </div>
 </div>
 </script>
@@ -86,7 +86,7 @@
             <p class="input-group">
                 <input type="text" ng-model="$parent.start_date" class="form-control" max-date="$parent.end_date" datepicker-popup="longDate" is-open="$parent.startdpopen" required/>
                 <span class="input-group-btn">
-                    <button class="btn btn-default" ng-click="openstartdatepicker($event)"><i class="glyphicon glyphicon-calendar"></i></button>
+                    <button type="button" class="btn btn-default" ng-click="openstartdatepicker($event)"><i class="glyphicon glyphicon-calendar"></i></button>
                 </span>
             </p>
         </div>
@@ -95,14 +95,14 @@
             <p class="input-group">
                 <input type="text" ng-model="$parent.end_date" class="form-control" min-date="$parent.start_date" datepicker-popup="longDate" is-open="$parent.enddpopen" required/>
                 <span class="input-group-btn">
-                    <button class="btn btn-default" ng-click="openenddatepicker($event)"><i class="glyphicon glyphicon-calendar"></i></button>
+                    <button type="button" class="btn btn-default" ng-click="openenddatepicker($event)"><i class="glyphicon glyphicon-calendar"></i></button>
                 </span>
             </p>
         </div>
     </div>
     <div class="modal-footer">
         <button class="btn btn-primary" type="submit">Create</button>
-        <button class="btn btn-default" type="button" data-dismiss="modal">Cancel</button>
+        <button class="btn btn-default" type="button" ng-click="cancel()">Cancel</button>
     </div>
 </form>
 </script>
