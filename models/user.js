@@ -12,6 +12,7 @@ var userSchema = new mongoose.Schema({
 
     //oauth tokens
     google: String,
+    tokens: Array, //used to store oauth access tokens
 
     profile: {
         name: String,

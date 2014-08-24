@@ -23,13 +23,16 @@ font-weight: bold;
       <ul class="nav navbar-nav">
         <li id="menu_about"><a href="/about">Home</a></li>
         <% if (user) { %>
-            <li id="menu_page"><a href="/page">Pages</a></li>
+            <li id="menu_page"><a href="/list">Pages</a></li>
             <li id="menu_setting"><a href="/setting">Settings</a></li>
         <% } %>
       </ul>
       <ul class="nav navbar-nav navbar-right">
         <% if (user) { %>
-            <li class="not-active">
+            <li>
+                <a><%= user.profile.name%></a>
+            </li>
+            <li>
                 <button type="button" onclick="document.location='/logout'" class="btn btn-default navbar-btn">Logout</button>
             </li>
             <% if (user.admin) { %>

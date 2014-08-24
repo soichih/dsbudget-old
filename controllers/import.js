@@ -11,24 +11,29 @@ var Category = require('../models/category');
 var Income = require('../models/income');
 
 exports.dsbudget = function(req, res) {
-    if(req.user) {
-        var docid = new mongo.ObjectID(req.body.docid);
-        var importtype = req.body.importtype;
-        var import_opts = {fd: req.body.fd};
-        Doc.getAuth(req.user, docid, function(err, auth) {
-            if(auth.canwrite) {
-                //parse the xml
+    if(!req.user) return res.redirect('/');
+    //var docid = new mongo.ObjectID(req.body.docid);
+    Doc.findOne(req.body.docid, function(err, doc) {
+        if(err) {   
+            req.flash('error', {msg: err});
+            return res.redirect('/');
+        }
+        doc.getAuth(req.user, function(err, canread, canwrite) {
+            if(canwrite) {
+                var importtype = req.body.importtype;
+                var import_opts = {fd: req.body.fd};
+                console.dir(req.body);
+                console.dir(req.files);
                 var path = req.files.file.path;
-                //console.log(path); // like ... /tmp/29315-1n858ly.jpg
                 switch(importtype) {
                 case "dsbudget":
-                    doimport(docid, path, import_opts, function(err) {
+                    doimport(req.body.docid, path, import_opts, function(err) {
                         if(err) {
                             console.log("returning error:"+err);
                             res.statusCode = 500;
                             res.write(err);
                         } else {
-                            //all good
+                            console.log("done importing");
                             res.statusCode = 200;
                         }
                         res.end();
@@ -40,7 +45,7 @@ exports.dsbudget = function(req, res) {
                 res.end();
             }
         });
-    }
+    });
 };
 
 String.prototype.insert = function (index, string) {
@@ -270,7 +275,7 @@ function process_page(doc_id, opts, page, next_page) {
 
 function reset_balance(docid, callback) {
     //reset _balance_from reference with actual page_id
-    Page.findByDocID(docid, function(err, doc_pages) {
+    Page.find({doc_id: docid}, function(err, doc_pages) {
         function findPageByName(name) {
             for(var i in doc_pages) {
                 var searching_doc_page = doc_pages[i];
@@ -288,9 +293,9 @@ function reset_balance(docid, callback) {
                 //and allow only 1 child.
                 //TODO - should I also check for date to prevent circular link?
                 if(balance_page.balance_to) {
-                    console.log("balance_to on page "+balance_page._id+" is already set to "+balance_page.balance_to);
+                    console.log("balance_to on page "+balance_page.id+" is already set to "+balance_page.balance_to);
                     //turn it into real balance with amount:0
-                    Income.update(doc_income._id, {
+                    Income.update(doc_income.id, {
                         $set: {
                             amount: '0',
                             name: "Invalid balance originally from "+doc_income._balance_from+" (only 1 child page allowed)"
@@ -298,16 +303,15 @@ function reset_balance(docid, callback) {
                         $unset: {_balance_from: 1}
                     }, next); 
                 } else {
-                    Income.update(doc_income._id, {
+                    Income.update(doc_income.id, {
                         $set: {
-                            balance_from: balance_page._id
+                            balance_from: balance_page.id
                         },
                         $unset: {_balance_from: 1}
                     }, function() {
                         //update balance_to on page also
-                        //console.log("setting balance_to on "+balance_page._id+" to be "+doc_income._id);
-                        Page.update(balance_page._id, {
-                            $set: { balance_to: doc_income._id }
+                        Page.update(balance_page.id, {
+                            $set: { balance_to: doc_income.id }
                         }, next);
                     });
                 }
@@ -317,9 +321,9 @@ function reset_balance(docid, callback) {
         }
 
         async.forEach(doc_pages, function(doc_page, next_doc_page) {
-            Income.findByPageID(doc_page._id, function(err, doc_incomes) {
+            Income.find({page_id: doc_page.id}, function(err, doc_incomes) {
                 if(err) {
-                    consooe.log("failed to find incomes by page id " + doc_page._id);
+                    consooe.log("failed to find incomes by page id " + doc_page.id);
                 } else {
                     async.forEach(doc_incomes, reset_balance_from, next_doc_page);
                 } 
@@ -331,8 +335,10 @@ function reset_balance(docid, callback) {
 function doimport(docid, path, opts, callback) {
     fs.readFile(path, function(err, data) {
         if(err) {
+            console.log("error loading data");
             callback(err);
         } else {
+            console.log("done loading data");
             var parser = new xml2js.Parser();
             parser.parseString(data, function(err, doc) {
                 if(err) {

@@ -1,11 +1,11 @@
 <% include head.ejs %>
 <% include navbar.ejs %>
-<link rel="stylesheet" href="/js/colorpicker/colorpicker.css">
-<script src="/js/colorpicker/bootstrap-colorpicker-module.js"></script>
+
+<div class="container" ng-app="dsApp" ng-controller="PageListCtrl">
+<% include message.ejs %>
 
 <script>
-var dsApp = angular.module('dsApp', ['ngRoute', 'ui.bootstrap', 'angularFileUpload', 'colorpicker.module']);
-
+var dsApp = angular.module('dsApp', ['ui.bootstrap', 'angularFileUpload']);
 dsApp.directive('format', ['$filter', function ($filter) {
     return {
         require: '?ngModel',
@@ -46,6 +46,7 @@ dsApp.directive('ngConfirmClick', [
     }
 ]);
 
+/*
 dsApp.config(['$routeProvider', function($routeProvider) {
     $routeProvider.
     when('/', {
@@ -60,6 +61,7 @@ dsApp.config(['$routeProvider', function($routeProvider) {
         redirectTo: '/'
     });
 }]);
+*/
 
 function ImportCtrl($scope, $modalInstance, $upload, doc) {
     $scope.doc = doc;
@@ -83,12 +85,12 @@ function ImportCtrl($scope, $modalInstance, $upload, doc) {
         $upload.upload({
             url: '/import/dsbudget', 
             data: {
+                _csrf: '<%=_csrf%>', //doesn't work here.. let's add to exclusion
                 docid: $scope.docid,
                 importtype: $scope.importtype.name,
                 fd: $scope.fd }, 
             file: $scope.file,
         }).progress(function(evt) {
-            //console.log('percent: ' + parseInt(100.0 * evt.loaded / evt.total));
             $scope.progress = parseInt(100.0 * evt.loaded / evt.total);
             if(evt.loaded == evt.total) {
                 $scope.progress_action = "Processing";
@@ -96,7 +98,6 @@ function ImportCtrl($scope, $modalInstance, $upload, doc) {
         }).success(function(data, status, headers, config) {
             $modalInstance.close($scope);
         }).error(function(data, status, headers, config) {
-            //jalert('Oops.. Something went wrong! Please refer to dsBudget support forum.');
             alert(data);
             $modalInstance.dismiss('error');
         });
@@ -137,7 +138,8 @@ function NewpageCtrl($scope, $modalInstance, $location, $http, doc) {
 
     $scope.ok = function() {
         $http.post('/page', {
-            parent: $scope.parent,
+            _csrf: '<%=_csrf%>',
+            parent: $scope.parent.id,
             page: {
                 doc_id: doc._id,
                 name: $scope.name,
@@ -146,8 +148,7 @@ function NewpageCtrl($scope, $modalInstance, $location, $http, doc) {
                 end_date: $scope.end_date.getTime()
             }
         }).success(function(newpageid) {
-            //console.log(newpageid);
-            $location.path(newpageid);
+            document.location = '/page/'+newpageid;
         }).error(function(detail) {
             alert('Failed to create page: '+detail);
         });
@@ -166,12 +167,6 @@ function NewpageCtrl($scope, $modalInstance, $location, $http, doc) {
         $event.stopPropagation();
         $scope.enddpopen = true;
     };
-    /*
-    $scope.changeit = function() {
-        console.dir($scope.name);
-        console.dir($scope.parent.name);
-    }
-    */
 };
 NewpageCtrl.$inject = ['$scope', '$modalInstance', '$location', '$http', 'doc'];
 
@@ -397,7 +392,6 @@ function($scope, $http, $modal, $routeParams, $location) {
         var r = parseInt(color.substring(1,3), 16);
         var g = parseInt(color.substring(3,5), 16);
         var b = parseInt(color.substring(5,7), 16);
-        //console.log(color + " to " + r + "/" + g + "/" + b);
 
         r = Math.floor((256+r)/2);
         g = Math.floor((256+g)/2);
@@ -410,7 +404,6 @@ function($scope, $http, $modal, $routeParams, $location) {
         if (hg.length == 1) hg = '0' + hg;
         if (hb.length == 1) hb = '0' + hb;
         var c = '#' + hr + hg + hb;
-        //console.log(color + " to " + c);
         return '#' + hr + hg + hb;
     }
 
@@ -451,6 +444,7 @@ function($scope, $http, $modal, $routeParams, $location) {
         });
         modal.result.then(function(scope) {
             $http.post('/category', {
+                _csrf: '<%=_csrf%>',
                 category: scope.category
             }).success(function(newid) {
                 if(category == undefined) {
@@ -507,6 +501,7 @@ function($scope, $http, $modal, $routeParams, $location) {
         });
         modal.result.then(function(scope) {
             $http.post('/expense', {
+                _csrf: '<%=_csrf%>',
                 catid: scope.category._id,
                 expense: scope.expense,
                 eid: eid
@@ -551,24 +546,9 @@ function($scope, $http, $modal, $routeParams, $location) {
             }
         });
 
-        //console.log("opening dialog");
-        //console.dir(income);
-
         modal.result.then(function(scope) {
-            /*
-            if(scope.balance_from) {
-                scope.income.balance_from = scope.income.balance_from._id;
-                delete scope.income.name;
-                delete scope.income.amount;
-            } else {
-                //I am not sure why I have to do this for income but not expense..
-                scope.income.amount = parseFloat(scope.income.amount); 
-            }
-            console.dir(scope);
-            console.dir(scope.income);
-            */
-
             $http.post('/income', {
+                _csrf: '<%=_csrf%>',
                 income: scope.income
             }).success(function(newid) {
                 if(iid == undefined) {
@@ -579,8 +559,6 @@ function($scope, $http, $modal, $routeParams, $location) {
                 console.error(data);
             });
             if(iid != undefined) {
-                //console.log("updating");
-                //console.dir(scope.income);
                 page.incomes[iid] = scope.income;
             } else {
                 page.incomes.push(scope.income);
@@ -612,6 +590,7 @@ function($scope, $http, $modal, $routeParams, $location) {
         });
         modal.result.then(function(scope) {
             $http.post('/page', {
+                _csrf: '<%=_csrf%>',
                 page: scope.page
             }).success(function() {
                 //as expected..
@@ -636,11 +615,119 @@ function($scope, $http, $modal, $routeParams, $location) {
         });
     };
 }]);
-
 </script>
-<div class="container" ng-app="dsApp">
-    <% include message.ejs %>
-    <div ng-view></div>
-    <% include footer.ejs %>
+
+<script type="text/ng-template" id="importdialog.html">
+<form ng-submit="ok()">
+    <div class="modal-header">
+        <h3>Import</h3>
+    </div>
+    <div class="modal-body">
+        <div class="form-group">
+            <label for="importtype">From</label>
+            <select id="importtype" class="form-control" ng-model="importtype" ng-options="type.name for type in importtypes" required></select>
+        </div>
+        <p ng-if="importtype.name == 'dsbudget'">
+        Please upload your dsBudget document (BudgetDocument.xml) stored on your computer to import data.  
+        If you are not sure how to find it, please contact dsBudget support forum.</p>
+        <div class="form-group">
+            <label for="fd">Currency Fraction Digits</label>
+            <p>Please select number of digits under major denomination in your currrency. For example, for USD(like $.00), it is 2 
+            and for JPY(&yen;) it is 0.</p>
+            <input type="text" ng-model="fd" class="form-control" required/>
+        </div>
+        <div class="form-group">
+            <label for="importfile">Data File</label>
+            <input id="importfile" type="file" ng-file-select="onFileSelect($files)" required/>
+        </div>
+        <div ng-show="showprogress">
+            {{progress_action}} ... 
+            <progressbar class="progress-striped active" value="progress">{{progress}}%</progressbar>
+        </div>
+    </div>
+    <div class="modal-footer">
+        <button type="submit" class="btn btn-primary" ng-disabled="showprogress">Import</button>
+        <button type="button" class="btn btn-default" ng-click="cancel()" ng-disabled="showprogress">Cancel</button>
+    </div>
 </div>
+</script>
+
+<script type="text/ng-template" id="newpagedialog.html">
+<form ng-submit="ok()">
+    <div class="modal-header">
+        <h3>New Page</h3>
+    </div>
+    <div class="modal-body">
+        <div class="form-group">
+            <label>Parent Page</label>
+            <select class="form-control" ng-model="$parent.parent" ng-options="page.name for page in doc.pages | orderBy:'-end_date'">
+                <option value="">(Blank Page)</option>
+            </select>
+        </div>
+        <!--- TODO rest of this form looks too similar to page edit dialog.. should be merged? -->
+        <div class="form-group">
+            <label>Page Name</label>
+            <input type="text" class="form-control" ng-model="$parent.name" required/>
+        </div>
+        <div class="form-group">
+            <label>Note</label><br>
+            <input type="text" ng-model="$parent.desc" class="form-control"/>
+        </div>
+        <div class="form-group">
+            <label>Start Date</label><br>
+            <p class="input-group">
+                <input type="text" ng-model="$parent.start_date" class="form-control" max-date="$parent.end_date" datepicker-popup="longDate" is-open="$parent.startdpopen" required/>
+                <span class="input-group-btn">
+                    <button type="button" class="btn btn-default" ng-click="openstartdatepicker($event)"><i class="glyphicon glyphicon-calendar"></i></button>
+                </span>
+            </p>
+        </div>
+        <div class="form-group">
+            <label>End Date</label><br>
+            <p class="input-group">
+                <input type="text" ng-model="$parent.end_date" class="form-control" min-date="$parent.start_date" datepicker-popup="longDate" is-open="$parent.enddpopen" required/>
+                <span class="input-group-btn">
+                    <button type="button" class="btn btn-default" ng-click="openenddatepicker($event)"><i class="glyphicon glyphicon-calendar"></i></button>
+                </span>
+            </p>
+        </div>
+    </div>
+    <div class="modal-footer">
+        <button class="btn btn-primary" type="submit">Create</button>
+        <button class="btn btn-default" type="button" ng-click="cancel()">Cancel</button>
+    </div>
+</form>
+</script>
+
+
+<div ng-repeat="doc in docs">
+    <form class="form-inline pull-right">
+        <input ng-model="page_query" placeholder="Page Filter" class="form-control">
+        <button type="button" class="btn btn-default" ng-click="opennew(doc)">New Page</button>
+        <button type="button" class="btn btn-default" ng-click="openimport(doc)">Import</button>
+    </form>
+    <h1 class="doc-title">{{doc.name}}</h1>
+
+    <div class="page-summary" ng-repeat="page in doc.pages | filter:page_query | orderBy:orderProp">
+        <div class="row">
+            <div class="col-md-4">
+                <a href="/page/{{page._id}}"><b>{{page.name}}<span ng-show="!page.name">(Untitled)</span></b></a>
+            </div>
+            <div class="col-md-6">
+                <div class="progress" ng-class="{'progress-striped active' : page._active}">
+                    <div class="progress-bar" ng-class="{'progress-bar-danger' : page._pct >= 100}" role="progressbar" aria-valuenow="{{page._pct}}" aria-valuemin="0" aria-valuemax="100" style="width: {{page._pct}}%">
+                        <span class="sr-only">{{page._pct}}% Complete</span>
+                    </div>
+                </div><!--process-->
+            </div>
+            <div class="col-md-2">
+                <span>{{page.start_date | date:'shortDate'}} to {{page.end_date|date:'shortDate'}}</span>
+            </div>
+        </div> <!--row-->
+    </div><!--pages-->
+</div><!--docs-->
+<% include footer.ejs %>
+</div><!--container-->
 <% include tail.ejs %>
+
+

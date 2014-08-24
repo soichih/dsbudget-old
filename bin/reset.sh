@@ -1,1 +1,1 @@
-mongo dsbudget test/reset.js
+mongo dsbudget bin/reset.js

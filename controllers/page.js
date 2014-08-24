@@ -9,27 +9,51 @@ var Income = require('../models/income');
 var Category = require('../models/category');
 var secrets = require('../config/secrets');
 
-exports.getPage = function(req, res) {
-    if(req.user) {
-        res.render("page.ejs", {req: req, menu: "page"});
-    } else {
-        res.redirect('/'); 
-    }
+exports.getList = function(req, res) {
+    if(!req.user) return res.redirect('/');
+    res.render("list.ejs", {menu: "page"});
 };
 
-function createpage(newpage, next) {
-    Page.create(newpage, function(err, id) {
+exports.getPage = function(req, res) {
+    if(!req.user) return res.redirect('/');
+    Page.findById(req.params.id, function(err, page) {
         if(err) {
-            res.statusCode = 500;
-            res.write("Failed to create page");
-        } else {
-            next(id); 
-            res.statusCode = 200;
-            res.write(id.toString());
+            req.flash('error', {msg: 'sorry could not find such page'});
+            return res.redirect('/');
         }
-        res.end();
+        page.getAuth(req.user, function(err, canread, canwrite) {     
+            if(canread) {
+                res.render("page.ejs", {menu: "page", page: page});
+            }
+        });
+    });
+};
+
+function createpage(user, page, parent, cb) {
+    Page.create(page, function(err, newpage) {
+        if(err) return cb(err);
+        var page_id = newpage.id;
+
+        //if parent page is specified, copy income and recurring expenses..
+        if(parent != null) {
+            //make sure user really has read access to this parent
+            Page.findById(parent.id, function(err, parent) {
+                if(!err) {
+                    parent.getAuth(user, function(err, canreadp, canwritep) {
+                        if(canreadp) {
+                            copyincomes(parent.id, page_id);
+                            copycategories(parent.id, page_id, page.start_date);
+                            //TODO - add balance income using parent?
+                        }
+                    });
+                }
+            });
+        }
+        cb(null, page_id);
     });
 }
+
+/*
 function updatepage(id, page) {
     Page.update(id, {$set: page}, function(err, id) {
         if(err) {
@@ -43,6 +67,8 @@ function updatepage(id, page) {
         res.end();
     });
 }
+*/
+
 function copyincomes(from_pageid, to_pageid) {
     Income.findByPageID(from_pageid, function(err, incomes) {
         incomes.forEach(function(income) {
@@ -55,8 +81,9 @@ function copyincomes(from_pageid, to_pageid) {
         });
     });
 }
+
 function copycategories(from_pageid, to_pageid, start_time) {
-    Category.findByPageID(from_pageid, function(err, categories) {
+    Category.findOne({page_id: from_pageid}, function(err, categories) {
         categories.forEach(function(category) {
             category.page_id = to_pageid;
             delete category._id; //necessary?
@@ -81,50 +108,33 @@ function copycategories(from_pageid, to_pageid, start_time) {
 
 exports.postPage = function(req, res) {
     if(req.user && req.body.page) {
-        var dirty_page = req.body.page;
-        var clean_page = {
-            //TODO - I am not sure who is really responsible for validating field types.. model?
-            doc_id: new mongo.ObjectID(dirty_page.doc_id),
-            name: dirty_page.name.toString(),
-            desc: (dirty_page.desc ? dirty_page.desc.toString() : ""),
-            start_date: parseInt(dirty_page.start_date),
-            end_date: parseInt(dirty_page.end_date)
-        };
-
-        if(dirty_page._id) {
+        var page = req.body.page;
+        if(page.id != undefined) {
             //updating existing page
-            var page_id = new mongo.ObjectID(dirty_page._id);
-            Page.findByID(page_id, function(err, page) {
+            Page.findById(page.id, function(err, page) {
                 var docid = page.doc_id;
-                Doc.getAuth(req.user, docid, function(err, auth) {
-                    if(auth.canwrite) {
-                        updatepage(page_id, clean_page);
+                page.getAuth(req.user, function(err, canread, canwrite) {
+                    if(canwrite) {
+                        updatepage(page_id, page);
                     }
                 });
             });
         } else {
-            //adding new page
-            Doc.getAuth(req.user, dirty_page.doc_id, function(err, auth) {
-                if(auth.canwrite) {
-                    createpage(clean_page, function(page_id) {
-                        //TODO - if parent page is specified, copy income and recurring expenses..
-                        if(req.body.parent != null) {
-                            var parentid = new mongo.ObjectID(req.body.parent._id);
-                            //make sure user really has read access to this parent
-                            Page.findByID(parentid, function(err, parent) {
-                                if(!err) {
-                                    Doc.getAuth(req.user, parent.doc_id, function(err, auth) {
-                                        if(auth.canread) {
-                                            copyincomes(parentid, page_id);
-                                            copycategories(parentid, page_id, clean_page.start_date);
-                                            //TODO - add balance income using parent?
-                                        }
-                                    });
-                                }
-                            });
-                        }
-                    });
-                }
+            //adding new page.. first make sure user has access to the doc
+            Doc.findById(page.doc_id, function(err, doc) {
+                doc.getAuth(req.user, function(err, canread, canwrite) {
+                    if(canwrite) {
+                        createpage(req.user, page, req.body.parent, function(err, page_id) {
+                            if(err) {
+                                res.statusCode = 500;
+                            } else {
+                                res.statusCode = 200;
+                                res.write(page_id.toString());
+                            }
+                            res.end();
+                        });
+                    }
+                });
             });
         }
     }
@@ -149,21 +159,20 @@ exports.pageBalance = function(req, res) {
 exports.docs = function(req, res) {
     var now = new Date().getTime();
     if(req.user) {
-        //load all docs
         Doc.find({owners: req.user._id}, function(err, docs) {
+            var _docs = [];
             //load pages for each doc
             async.forEach(docs, function(doc, next) {
-                Page.find({doc_id: doc._id}, function(err, pages) {
-                    //add some optional parameters to each page
-                    async.forEach(pages, function(page, next_page) {
-                        next_page();
-                    }, function() {
-                        doc.pages = pages;
-                        next();
-                    });
+                Page.find({doc_id: doc.id}, function(err, pages) {
+                    if(err) { return console.debug("failed to load pages for doc_id:"+doc.id); }
+                    var _doc = doc.toObject();
+                    _doc.pages = pages;
+                    _docs.push(_doc);
+                    next();
                 });
             }, function() {
-                res.json(docs);
+                res.json(_docs);
+                res.end();
             });
         });
     }
@@ -172,7 +181,7 @@ exports.docs = function(req, res) {
 exports.pageDetail = function(req, res) {
     if(req.user) {
         //load page requested
-        Page.findByID(new mongo.ObjectID(req.query.id), function(err, page) {
+        Page.findById(req.query.id, function(err, page) {
             if(err) {
                 console.error(err);
                 res.statusCode = 404;
@@ -196,10 +205,8 @@ exports.pageDetail = function(req, res) {
 
 exports.postExpense = function(req, res) {
     if(req.user) {
-        var catid = new mongo.ObjectID(req.body.catid);
-        Category.findByID(catid, function(err, cat) {
-            var page_id = cat.page_id;
-            Page.findByID(page_id, function(err, page) {
+        Category.findById(req.body.catid, function(err, cat) {
+            Page.findById(cat.page_id, function(err, page) {
                 var docid = page.doc_id;
                 Doc.getAuth(req.user, docid, function(err, auth) {
                     if(auth.canwrite) {
@@ -216,7 +223,7 @@ exports.postExpense = function(req, res) {
                         } else {
                             cat.expenses.push(clean_expense);
                         }
-                        Category.update(page_id, cat._id, {$set: {expenses: cat.expenses}}, function(err, id) {
+                        Category.update(cat.page_id, cat._id, {$set: {expenses: cat.expenses}}, function(err, id) {
                             if(err) {
                                 console.error(err);
                                 res.statusCode = 500;
@@ -238,15 +245,14 @@ exports.deleteExpense = function(req, res) {
     if(req.user) {
         var category_id = req.params.cid;
         var eid = req.params.eid;
-        Category.findByID(new mongo.ObjectID(category_id), function(err, cat) {
+        Category.findById(category_id, function(err, cat) {
             //make sure user has write access
-            var page_id = cat.page_id;
-            Page.findByID(page_id, function(err, page) {
+            Page.findById(cat.page_id, function(err, page) {
                 var docid = page.doc_id;
                 Doc.getAuth(req.user, docid, function(err, auth) {
                     if(auth.canwrite) {
                         cat.expenses.splice(eid, 1);
-                        Category.update(page_id, cat._id, {$set: {expenses: cat.expenses}}, function(err, id) {
+                        Category.update(cat.page_id, cat._id, {$set: {expenses: cat.expenses}}, function(err, id) {
                             if(err) {
                                 console.error(err);
                                 res.statusCode = 500;
@@ -296,19 +302,18 @@ function upsertIncome(id, income) {
 exports.postIncome = function(req, res) {
     if(req.user) {
         var income = req.body.income;
-        var page_id = new mongo.ObjectID(income.page_id);
-        Page.findByID(page_id, function(err, page) {
+        Page.findById(income.page_id, function(err, page) {
             Doc.getAuth(req.user, page.doc_id, function(err, auth) {
                 if(auth.canwrite) {
                     var clean_income = {
-                        page_id: page_id,
+                        page_id: income.page_id,
                         name: income.name //TODO..make sure it's string?
                     }
                     if(income.balance_from) {
                         //convert to mongo id
                         clean_income.balance_from = new mongo.ObjectID(income.balance_from);
                         //make sure the page belongs to the same doc
-                        Page.findByID(clean_income.balance_from, function(err, balance_page) {
+                        Page.findById(clean_income.balance_from, function(err, balance_page) {
                             if(balance_page.doc_id.equals(page.doc_id)) {
                                 upsertIncome(income._id, clean_income);
                             } else {
@@ -331,13 +336,11 @@ exports.postCategory = function(req, res) {
     if(req.user) {
         var dirty_category = req.body.category;
         var category = dirty_category; //TODO - not sure how to validate data structure
-
-        if(category._id) {
+        if(category.id) {
             //update
-            var category_id = new mongo.ObjectID(category._id);
-            Category.findByID(category_id, function(err, cat) {
+            Category.findById(category.id, function(err, cat) {
                 //make sure user can edit this category
-                Page.findByID(cat.page_id, function(err, page) {
+                Page.findById(cat.page_id, function(err, page) {
                     var docid = page.doc_id;
                     Doc.getAuth(req.user, docid, function(err, auth) {
                         if(auth.canwrite) {
@@ -362,13 +365,12 @@ exports.postCategory = function(req, res) {
             });
         } else {
             //insert
-            var page_id = new mongo.ObjectID(category.page_id);
-            Page.findByID(page_id, function(err, page) {
+            Page.findById(category.page_id, function(err, page) {
                 var docid = page.doc_id;
                 Doc.getAuth(req.user, docid, function(err, auth) {
                     if(auth.canwrite) {
                         //ok proceed...
-                        category.page_id = page_id; //replace string to ObjectID (necessary?)
+                        category.page_id = category.page_id; //replace string to ObjectID (necessary?)
                         console.dir(category);
                         Category.create(category, function(err, id) {
                             if(err) {
@@ -391,12 +393,10 @@ exports.postCategory = function(req, res) {
 
 exports.deleteCategory = function(req, res) {
     if(req.user) {
-        var category_id = new mongo.ObjectID(req.params.id);
-        console.log("removing category :"+category_id);
-        Category.findByID(category_id, function(err, category) {
+        Category.findById(req.params.id, function(err, category) {
             //make sure user has write access
             var page_id = category.page_id;
-            Page.findByID(page_id, function(err, page) {
+            Page.findById(page_id, function(err, page) {
                 var docid = page.doc_id;
                 Doc.getAuth(req.user, docid, function(err, auth) {
                     if(auth.canwrite) {
@@ -423,10 +423,10 @@ exports.deleteIncome = function(req, res) {
     if(req.user) {
         var income_id = req.params.id;
         //console.dir(income_id);
-        Income.findByID(new mongo.ObjectID(income_id), function(err, income) {
+        Income.findById(income_id, function(err, income) {
             //make sure user has write access
             var page_id = income.page_id;
-            Page.findByID(page_id, function(err, page) {
+            Page.findById(page_id, function(err, page) {
                 var docid = page.doc_id;
                 Doc.getAuth(req.user, docid, function(err, auth) {
                     if(auth.canwrite) {
@@ -451,12 +451,11 @@ exports.deleteIncome = function(req, res) {
 
 exports.deletePage = function(req, res) {
     if(req.user) {
-        var page_id = new mongo.ObjectID(req.params.id);
-        Page.findByID(page_id, function(err, page) {
+        Page.findById(req.params.id, function(err, page) {
             var docid = page.doc_id;
             Doc.getAuth(req.user, docid, function(err, auth) {
                 if(auth.canwrite) {
-                    Page.remove(page_id, function(err) {
+                    Page.remove(page.id, function(err) {
                         if(err) {
                             console.error(err);
                             res.statusCode = 500;

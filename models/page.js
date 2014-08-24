@@ -4,7 +4,7 @@ var pageSchema = new mongoose.Schema({
     name: String,
     doc_id: mongoose.Schema.ObjectId,
     start_date: Date,
-    end_data: Date,
+    end_date: Date,
 
     //these are get/set by getBalance method.. don't access them unless you know what you are doing
     _total_income: { type: String, default: null },

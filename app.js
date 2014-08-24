@@ -11,6 +11,7 @@ var logger = require('morgan');
 var errorHandler = require('errorhandler');
 var csrf = require('lusca').csrf();
 var methodOverride = require('method-override');
+var multipart = require('connect-multiparty');
 
 var _ = require('lodash');
 var MongoStore = require('connect-mongo')({ session: session });
@@ -115,7 +116,8 @@ app.use(passport.initialize());
 app.use(passport.session());
 app.use(flash());
 app.use(function(req, res, next) {
-    var csrfExclude = ['/url1', '/url2'];
+    //for /import/dsbudget -- https://github.com/krakenjs/lusca/issues/39
+    var csrfExclude = ['/import/dsbudget'];
     if (_.contains(csrfExclude, req.path)) return next();
     csrf(req, res, next);
 });
@@ -179,7 +181,9 @@ app.get('/', homeController.index);
 app.get('/about', homeController.about);
 
 app.get('/docs', pageController.docs);
-app.get('/page', pageController.getPage);
+app.get('/list', pageController.getList);
+
+app.get('/page/:id', pageController.getPage);
 app.post('/page', pageController.postPage);
 app.get('/page/balance/:id', pageController.pageBalance);
 app.get('/page/detail', pageController.pageDetail);
@@ -198,17 +202,17 @@ app.get('/login', userController.getLogin);
 app.post('/login', userController.postLogin);
 app.get('/logout', userController.logout);
 
-app.get('/auth/error', userController.autherror);
-
 app.get('/setpass', userController.getSetpass);
 app.post('/setpass', userController.postSetpass);
 app.get('/setting', userController.getSetting);
 app.post('/setting', userController.postSetting);
 
-app.get('/auth/google', passport.authenticate('google'));
+app.get('/auth/error', userController.autherror);
+app.get('/auth/google', passport.authenticate('google', {scope: 'profile email'}));
 app.get('/auth/google/return', passport.authenticate('google', { successRedirect: '/', failureRedirect: '/auth/error' }));
 
-app.post('/import/dsbudget', importController.dsbudget);
+var multipartMiddleware = multipart();
+app.post('/import/dsbudget', multipartMiddleware, importController.dsbudget);
 
 /**
  * 500 Error Handler.

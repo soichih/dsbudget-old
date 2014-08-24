@@ -22,6 +22,7 @@ passport.deserializeUser(function(id, done) {
     });
 });
 
+//see https://cloud.google.com/console/project
 passport.use(new GoogleStrategy(secrets.google, function(req, accessToken, refreshToken, profile, done) {
   if (req.user) {
     User.findOne({ google: profile.id }, function(err, existingUser) {

@@ -37,6 +37,8 @@
     "compression": "^1.0.10",
     "connect-assets": "^4.3.0",
     "connect-mongo": "^0.4.1",
+    "connect-flash": "*",
+    "connect-multiparty": "1.2.1",
     "cookie-parser": "^1.3.2",
     "csso": "^1.3.11",
     "errorhandler": "^1.1.1",
@@ -76,7 +78,6 @@
     "validator": "^3.17.0",
     "yui": "^3.17.2",
 
-
     "socket.io": "*",
     "mongodb": "> 1.1.10",
     "ejs": "*",
@@ -90,8 +91,7 @@
     "xml2js": "*",
     "node-sass": "*",
     "extend": "*",
-    "decimal": "*",
-    "connect-flash": "*"
+    "decimal": "*"
   },
   "devDependencies": {
     "blessed": "^0.0.37",
