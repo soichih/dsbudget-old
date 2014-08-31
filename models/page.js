@@ -1,4 +1,9 @@
 var mongoose = require('mongoose');
+var async = require('async');
+var decimal = require('decimal');
+
+var Income = require('./income');
+var Category = require('./category');
 
 var pageSchema = new mongoose.Schema({
     name: String,
@@ -33,65 +38,63 @@ pageSchema.methods.invalidateExpense = function(cb) {
 };
 
 pageSchema.methods.getBalance = function(cb) {
-    cb(null, "123");
-    /*
-    this.findByID(id, function(err, page) {
-        async.parallel({
-            total_income: function(next) {
-                if(page._total_income) {
-                    next(null, decimal(page._total_income));
-                } else {
-                    //compute total income and cache
-                    var total = decimal('0');
-                    exports.Income.findByPageID(id, function(err, incomes) {
-                        async.forEach(incomes, function(income, next_income) {
-                            if(income.balance_from) {
-                                //recurse if it's balance income
-                                exports.Page.getBalance(income.balance_from, function(err, amount) {
+    var page = this;
+    async.parallel({
+        total_income: function(next) {
+            if(this._total_income) {
+                next(null, decimal(this._total_income));
+            } else {
+                //compute total income and cache
+                var total = decimal('0');
+                Income.find({page_id: page.id}, function(err, incomes) {
+                    async.forEach(incomes, function(income, next_income) {
+                        if(income.balance_from) {
+                            //recurse if it's balance income
+                            page.findById(income.balance_from, function(err, balance_page) {
+                                balance_page.getBalance(function(err, amount) {
                                     total = total.add(amount);
                                     next_income();
                                 });
-                            } else {
-                                total = total.add(income.amount);
-                                next_income();
-                            }
-                        }, function() {
-                            //cache total
-                            exports.Page.update(id, {$set: {_total_income: total.toString()}}, function() {
-                                next(null, total);
                             });
-                        });
-                    });
-                }
-            },
-            total_expense: function(next) {
-                if(page._total_expense) {
-                    next(null, decimal(page._total_expense));
-                } else {
-                    var total = decimal('0');
-                    exports.Category.findByPageID(id, function(err, categories) {
-                        categories.forEach(function(category) {
-                            category.expenses.forEach(function(expense) {
-                                if(!expense.tentative) {
-                                    total = total.add(expense.amount);
-                                    //console.log("adding " + expense.amount);
-                                    //console.log("total " + total);
-                                }
-                            });
-                        });
+                        } else {
+                            total = total.add(income.amount);
+                            next_income();
+                        }
+                    }, function() {
                         //cache total
-                        exports.Page.update(id, {$set: {_total_expense: total.toString()}}, function() {
-                            next(null, total);
+                        page._total_income = total.toString();
+                        page.save(function(err) {
+                            next(err, total);
                         });
                     });
-                }
+                });
             }
-        }, function(err, ret){
-            var balance = ret.total_income.sub(ret.total_expense);
-            cb(err, balance.toString());
-        });
+        },
+        total_expense: function(next) {
+            if(page._total_expense) {
+                next(null, decimal(page._total_expense));
+            } else {
+                var total = decimal('0');
+                Category.find({page_id: page.id}, function(err, categories) {
+                    categories.forEach(function(category) {
+                        category.expenses.forEach(function(expense) {
+                            if(!expense.tentative) {
+                                total = total.add(expense.amount);
+                            }
+                        });
+                    });
+                    //cache total
+                    page._total_expense = total.toString();
+                    page.save(function(err) {
+                        next(err, total);
+                    });
+                });
+            }
+        }
+    }, function(err, ret){
+        var balance = ret.total_income.sub(ret.total_expense);
+        cb(err, balance.toString());
     });
-    */
 };
 
 module.exports = mongoose.model('Page', pageSchema, 'page');

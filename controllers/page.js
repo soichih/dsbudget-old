@@ -9,21 +9,54 @@ var Income = require('../models/income');
 var Category = require('../models/category');
 var secrets = require('../config/secrets');
 
+function respond(res, err, data) {
+    if(err) {
+        res.statusCode = 500;
+        res.write(err.toString());
+        res.end();
+    } else {
+        res.statusCode = 200;
+        //res.write(item._id.toString());
+        if(data) {
+            res.write(data);
+        }
+        res.end();
+    }
+}
+
 exports.getList = function(req, res) {
     if(!req.user) return res.redirect('/');
     res.render("list.ejs", {menu: "page"});
 };
 
 exports.getPage = function(req, res) {
+    var page_id = req.params.id;
     if(!req.user) return res.redirect('/');
-    Page.findById(req.params.id, function(err, page) {
+    Page.findById(page_id, function(err, page) {
         if(err) {
             req.flash('error', {msg: 'sorry could not find such page'});
             return res.redirect('/');
         }
         page.getAuth(req.user, function(err, canread, canwrite) {     
             if(canread) {
-                res.render("page.ejs", {menu: "page", page: page});
+                Income.find({page_id: page.id}, function(err, incomes) {
+                    //for all balance incomes, lookup page name
+                    async.eachSeries(incomes, function(income, next) {
+                        if(income.balance_from) {    
+                            Page.findById(income.balance_from, function(err, in_page) {
+                                income.name = in_page.name;
+                                next();
+                            });
+                        } else {
+                            next();
+                        }
+                    }, function(err) {
+                        //lastly.. find all categories
+                        Category.find({page_id: page.id}, function(err, categories) {
+                            res.render("page.ejs", {menu: "page", page: page, incomes: incomes, categories: categories});
+                        });
+                    });
+                });
             }
         });
     });
@@ -39,11 +72,10 @@ function createpage(user, page, parent, cb) {
             //make sure user really has read access to this parent
             Page.findById(parent.id, function(err, parent) {
                 if(!err) {
-                    parent.getAuth(user, function(err, canreadp, canwritep) {
-                        if(canreadp) {
+                    parent.getAuth(user, function(err, canread, canwrite) {
+                        if(canread) {
                             copyincomes(parent.id, page_id);
                             copycategories(parent.id, page_id, page.start_date);
-                            //TODO - add balance income using parent?
                         }
                     });
                 }
@@ -57,12 +89,9 @@ function createpage(user, page, parent, cb) {
 function updatepage(id, page) {
     Page.update(id, {$set: page}, function(err, id) {
         if(err) {
-            //console.error(err);
-            res.statusCode = 500;
             res.write('update failed');
         } else {
             res.statusCode = 200;
-            res.write(id.toString());
         }
         res.end();
     });
@@ -107,51 +136,50 @@ function copycategories(from_pageid, to_pageid, start_time) {
 }
 
 exports.postPage = function(req, res) {
-    if(req.user && req.body.page) {
-        var page = req.body.page;
-        if(page.id != undefined) {
-            //updating existing page
-            Page.findById(page.id, function(err, page) {
-                var docid = page.doc_id;
-                page.getAuth(req.user, function(err, canread, canwrite) {
-                    if(canwrite) {
-                        updatepage(page_id, page);
-                    }
-                });
+    var page = req.body.page;
+    var parent = req.body.parent;
+    if(req.user && page) {
+        //adding new page.. first make sure user has access to the doc
+        Doc.findById(page.doc_id, function(err, doc) {
+            doc.getAuth(req.user, function(err, canread, canwrite) {
+                if(canwrite) {
+                    createpage(req.user, page, parent, function(err, page_id) {
+                        respond(res, err, page_id.toString());
+                    });
+                }
             });
-        } else {
-            //adding new page.. first make sure user has access to the doc
-            Doc.findById(page.doc_id, function(err, doc) {
-                doc.getAuth(req.user, function(err, canread, canwrite) {
-                    if(canwrite) {
-                        createpage(req.user, page, req.body.parent, function(err, page_id) {
-                            if(err) {
-                                res.statusCode = 500;
-                            } else {
-                                res.statusCode = 200;
-                                res.write(page_id.toString());
-                            }
-                            res.end();
-                        });
-                    }
-                });
+        });
+    }
+};
+exports.putPage = function(req, res) {
+    var page_id = req.params.id;
+    var new_page = req.body.page;
+    if(req.user) {
+        //updating existing page
+        Page.findById(page_id, function(err, page) {
+            page.getAuth(req.user, function(err, canread, canwrite) {
+                if(canwrite) {
+                    new_page.doc_id = page.doc_id; //don't allow user to change doc_id
+                    Page.findByIdAndUpdate(page._id, {$set: new_page}, function(err) {
+                        respond(res, err);
+                    });
+                }
             });
-        }
+        });
     }
 };
 
-exports.pageBalance = function(req, res) {
+exports.getPageBalance = function(req, res) {
+    var page_id = req.params.id;
     if(req.user) {
-        Page.getBalance(new mongo.ObjectID(req.params.id), function(err, balance) {
-            if(err) {
-                res.statusCode = 500;
-                res.write(err);
-            } else {
-                //all good
-                res.statusCode = 200;
-                res.write(balance);
-            }
-            res.end();
+        Page.findById(page_id, function(err, page) {
+            page.getAuth(req.user, function(err, canread, canwrite) {
+                if(canread) {
+                    page.getBalance(function(err, balance) {
+                        respond(res, err, balance);
+                    });
+                }
+            });
         });
     }
 };
@@ -178,12 +206,11 @@ exports.docs = function(req, res) {
     }
 };
 
-exports.pageDetail = function(req, res) {
+exports.getPageDetail = function(req, res) {
     if(req.user) {
         //load page requested
         Page.findById(req.query.id, function(err, page) {
             if(err) {
-                console.error(err);
                 res.statusCode = 404;
                 res.end();
                 return;
@@ -203,56 +230,133 @@ exports.pageDetail = function(req, res) {
     }
 };
 
+//add new expense
 exports.postExpense = function(req, res) {
+    var catid = req.params.cid;
+    var new_expense = req.body.expense;
     if(req.user) {
-        Category.findById(req.body.catid, function(err, cat) {
-            Page.findById(cat.page_id, function(err, page) {
-                var docid = page.doc_id;
-                Doc.getAuth(req.user, docid, function(err, auth) {
-                    if(auth.canwrite) {
-                        var expense = req.body.expense;
-                        var clean_expense = {
-                            time: parseInt(expense.time),
-                            amount: parseFloat(expense.amount),
-                            where: expense.where, //make sure it's string?
-                            name: expense.name, //make sure it's string?
-                            tentative: expense.tentative //make sure it's bool?
-                        }
-                        if(req.body.eid != undefined) {
-                            cat.expenses[req.body.eid] = clean_expense;
-                        } else {
-                            cat.expenses.push(clean_expense);
-                        }
-                        Category.update(cat.page_id, cat._id, {$set: {expenses: cat.expenses}}, function(err, id) {
-                            if(err) {
-                                console.error(err);
-                                res.statusCode = 500;
-                                res.write('update failed');
-                            } else {
-                                res.statusCode = 200;
-                                res.write(id.toString());
-                            }
-                            res.end();
-                        });
-                    }
-                });
+        Category.findById(catid, function(err, cat) {
+            cat.getAuth(req.user, function(err, canread, canwrite) {
+                if(canwrite) {
+                    cat.expenses.push(new_expense);
+                    Category.findByIdAndUpdate(catid, {$set: {expenses: cat.expenses}}, function(err, affected) {
+                        var new_e = cat.expenses[cat.expenses.length-1];
+                        respond(res, err, new_e._id.toString()); //TODO - won't this throw if err is set?
+                    });
+                }
+            });
+        });
+    }
+};
+
+//update expense
+exports.putExpense = function(req, res) {
+    var catid = req.params.cid;
+    var eid = req.params.eid;
+    var new_expense = req.body.expense;
+    if(req.user) {
+        Category.findById(catid, function(err, cat) {
+            cat.getAuth(req.user, function(err, canread, canwrite) {
+                if(canwrite) {
+                    cat.expenses[eid] = new_expense;
+                    Category.findByIdAndUpdate(catid, {$set: {expenses: cat.expenses}}, function(err, affected) {
+                        respond(res, err);
+                    });
+                }
             });
         });
     }
 };
 
 exports.deleteExpense = function(req, res) {
+    var category_id = req.params.cid;
+    var eid = req.params.eid;
     if(req.user) {
-        var category_id = req.params.cid;
-        var eid = req.params.eid;
+        //find category for this expense
         Category.findById(category_id, function(err, cat) {
             //make sure user has write access
-            Page.findById(cat.page_id, function(err, page) {
-                var docid = page.doc_id;
-                Doc.getAuth(req.user, docid, function(err, auth) {
-                    if(auth.canwrite) {
-                        cat.expenses.splice(eid, 1);
-                        Category.update(cat.page_id, cat._id, {$set: {expenses: cat.expenses}}, function(err, id) {
+            cat.getAuth(req.user, function(err, canread, canwrite) {
+                if(canwrite) {
+                    cat.expenses.splice(eid, 1);
+                    cat.save(function(err, id) {
+                        respond(res, err);
+                    });
+                }
+            });
+        });
+    }
+};
+
+exports.postIncome = function(req, res) {
+    var new_income = req.body.income;
+    if(req.user) {
+        //make sure user has access to specified page
+        Page.findById(new_income.page_id, function(err, page) {
+            page.getAuth(req.user, function(err, canread, canwrite) {
+                if(canwrite) {
+                    //validate balance_from
+                    if(new_income.balance_from) {
+                        new_income.name = null; //we don't care about name if it's balance income
+                        //make sure the balance page belongs to the same doc that this income belongs
+                        //TODO - in the future, I might allow cross-document linking..
+                        Page.findById(new_income.balance_from, function(err, balance_page) {
+                            if(balance_page.doc_id.equals(page.doc_id)) {
+                                upsert();
+                            } else {
+                                res.statusCode = 400;
+                                res.write("can't use page from other doc.. for security reason");
+                                res.end();
+                            }
+                        });
+                    } else {
+                        upsert();
+                    }
+                }
+            });
+        });
+
+        function upsert() {
+            if(new_income._id) {
+                Income.findByIdAndUpdate(new_income._id, {$set: new_income}, function(err, affected) {
+                    respond(res, err);
+                });
+            } else {
+                Income.create(new_income, function(err, item) {
+                    respond(res, err, item._id.toString()); //TODO - won't this throw if err is set?
+                });
+            }
+        }
+    }
+};
+
+exports.postCategory = function(req, res) {
+    if(req.user) {
+        var new_category = req.body.category;
+        Page.findById(new_category.page_id, function(err, page) {
+            page.getAuth(req.user, function(err, canread, canwrite) {
+                if(canwrite) {
+                    if(new_category._id) {
+                        Category.findByIdAndUpdate(new_category._id, {$set: new_category}, function(err, affected) {
+                            respond(res, err);
+                        });
+                    } else {
+                        Category.create(new_category, function(err, item){
+                            respond(res, err, item._id.toString());
+                        });
+                    }
+                }
+            });
+        });
+
+        /*
+        if(new_category.id) {
+            //updating.. 
+            Category.findById(new_category.id, function(err, cat) {
+                cat.getAuth(req.user, function(err, canread, canwrite) {
+                    if(canwrite) {
+                        //ok proceed...
+                        Category.update({id: cat.page_id}, cat._id, {$set: new_category}, 
+                        function(err, id) {
                             if(err) {
                                 console.error(err);
                                 res.statusCode = 500;
@@ -264,115 +368,15 @@ exports.deleteExpense = function(req, res) {
                             res.end();
                         });
                     }
-                }); 
-            });
-        });
-    }
-};
-
-function upsertIncome(id, income) {
-    if(id) {
-        var iid = new mongo.ObjectID(id);
-        Income.update(iid, {$set: income}, function(err) {
-            if(err) {
-                console.error(err);
-                res.statusCode = 500;
-                res.write('update failed');
-            } else {
-                res.statusCode = 200;
-                res.write('ok');
-            }
-            res.end();
-        });
-    } else {
-        Income.create(income, function(err, newid) {
-            if(err) {
-                console.error(err);
-                res.statusCode = 500;
-                res.write('insert failed');
-            } else {
-                res.statusCode = 200;
-                res.write(newid.toString());
-            }
-            res.end();
-        });
-    }
-}
-
-exports.postIncome = function(req, res) {
-    if(req.user) {
-        var income = req.body.income;
-        Page.findById(income.page_id, function(err, page) {
-            Doc.getAuth(req.user, page.doc_id, function(err, auth) {
-                if(auth.canwrite) {
-                    var clean_income = {
-                        page_id: income.page_id,
-                        name: income.name //TODO..make sure it's string?
-                    }
-                    if(income.balance_from) {
-                        //convert to mongo id
-                        clean_income.balance_from = new mongo.ObjectID(income.balance_from);
-                        //make sure the page belongs to the same doc
-                        Page.findById(clean_income.balance_from, function(err, balance_page) {
-                            if(balance_page.doc_id.equals(page.doc_id)) {
-                                upsertIncome(income._id, clean_income);
-                            } else {
-                                console.dir("can't use page from other doc.. for security reason");
-                                console.dir(page);
-                                console.dir(balance_page);
-                            }
-                        });
-                    } else {
-                        clean_income.amount = parseFloat(income.amount);
-                        upsertIncome(income._id, clean_income);
-                    }
-                 }
-            });
-        });
-    }
-};
-
-exports.postCategory = function(req, res) {
-    if(req.user) {
-        var dirty_category = req.body.category;
-        var category = dirty_category; //TODO - not sure how to validate data structure
-        if(category.id) {
-            //update
-            Category.findById(category.id, function(err, cat) {
-                //make sure user can edit this category
-                Page.findById(cat.page_id, function(err, page) {
-                    var docid = page.doc_id;
-                    Doc.getAuth(req.user, docid, function(err, auth) {
-                        if(auth.canwrite) {
-                            //ok proceed...
-                            delete category._id; //can't update _id
-                            category.page_id = cat.page_id; //replace string to ObjectID
-                            Category.update(cat.page_id, cat._id, {$set: category}, 
-                            function(err, id) {
-                                if(err) {
-                                    console.error(err);
-                                    res.statusCode = 500;
-                                    res.write('update failed');
-                                } else {
-                                    res.statusCode = 200;
-                                    res.write(id.toString());
-                                }
-                                res.end();
-                            });
-                        }
-                    });
                 });
             });
         } else {
             //insert
-            Page.findById(category.page_id, function(err, page) {
-                var docid = page.doc_id;
-                Doc.getAuth(req.user, docid, function(err, auth) {
-                    if(auth.canwrite) {
+            Page.findById(new_category.page_id, function(err, page) {
+                page.getAuth(req.user, function(err, canread, canwrite) {
+                    if(canwrite) {
                         //ok proceed...
-                        category.page_id = category.page_id; //replace string to ObjectID (necessary?)
-                        console.dir(category);
-                        Category.create(category, function(err, id) {
+                        Category.create(new_category, function(err, id) {
                             if(err) {
                                 console.error(err);
                                 res.statusCode = 500;
@@ -388,6 +392,7 @@ exports.postCategory = function(req, res) {
                 });
             });
         }
+        */
     }
 };
 
@@ -395,55 +400,28 @@ exports.deleteCategory = function(req, res) {
     if(req.user) {
         Category.findById(req.params.id, function(err, category) {
             //make sure user has write access
-            var page_id = category.page_id;
-            Page.findById(page_id, function(err, page) {
-                var docid = page.doc_id;
-                Doc.getAuth(req.user, docid, function(err, auth) {
-                    if(auth.canwrite) {
-                        //go ahead with removal
-                        Category.remove(page_id, category._id, function(err) {
-                            if(err) {
-                                console.error(err);
-                                res.statusCode = 500;
-                                res.write('removal failed');
-                            } else {
-                                res.statusCode = 200;
-                                res.write('ok');
-                            }
-                            res.end();
-                        });
-                    }
-                }); 
+            category.getAuth(req.user, function(err, canread, canwrite) {
+                if(canwrite) {
+                    //go ahead with removal
+                    category.remove(function(err) {
+                        respond(res, err);
+                    });
+                }
             });
         });
     }
 };
 
 exports.deleteIncome = function(req, res) {
+    var income_id = req.params.id;
     if(req.user) {
-        var income_id = req.params.id;
-        //console.dir(income_id);
         Income.findById(income_id, function(err, income) {
-            //make sure user has write access
-            var page_id = income.page_id;
-            Page.findById(page_id, function(err, page) {
-                var docid = page.doc_id;
-                Doc.getAuth(req.user, docid, function(err, auth) {
-                    if(auth.canwrite) {
-                        //go ahead with removal
-                        Income.remove(page_id, income._id, function(err) {
-                            if(err) {
-                                console.error(err);
-                                res.statusCode = 500;
-                                res.write('removal failed');
-                            } else {
-                                res.statusCode = 200;
-                                res.write('ok');
-                            }
-                            res.end();
-                        });
-                    }
-                }); 
+            income.getAuth(req.user, function(err, canread, canwrite) {
+                if(canwrite) {
+                    income.remove(function(err) {
+                        respond(res, err);
+                    });
+                }
             });
         });
     }
@@ -452,26 +430,15 @@ exports.deleteIncome = function(req, res) {
 exports.deletePage = function(req, res) {
     if(req.user) {
         Page.findById(req.params.id, function(err, page) {
-            var docid = page.doc_id;
-            Doc.getAuth(req.user, docid, function(err, auth) {
-                if(auth.canwrite) {
-                    Page.remove(page.id, function(err) {
-                        if(err) {
-                            console.error(err);
-                            res.statusCode = 500;
-                            res.write('removal failed');
-                        } else {
-                            res.statusCode = 200;
-                            res.write('ok');
-                        }
-                        res.end();
+            page.getAuth(req.user, function(err, canread, canwrite) {
+                if(canwrite) {
+                    page.remove(function(err) {
+                        //TODO - should remove income / categories for this page also
+                        respond(res, err);
                     });
                 }
             });
         });
     }
 };
-
-
-
 

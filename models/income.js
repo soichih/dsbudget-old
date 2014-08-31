@@ -4,6 +4,8 @@ var mongoose = require('mongoose');
 var incomeSchema = new mongoose.Schema({
     name: String,
     page_id: mongoose.Schema.ObjectId, //page that this income belongs to
+
+    balance_from: mongoose.Schema.ObjectId, //if set, this is balance income - so the amount should be undefined
     amount: String
 });
 

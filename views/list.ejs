@@ -6,6 +6,7 @@
 
 <script>
 var dsApp = angular.module('dsApp', ['ui.bootstrap', 'angularFileUpload']);
+/*
 dsApp.directive('format', ['$filter', function ($filter) {
     return {
         require: '?ngModel',
@@ -25,6 +26,7 @@ dsApp.directive('format', ['$filter', function ($filter) {
         }
     };
 }]);
+*/
 
 dsApp.directive('ngConfirmClick', [
     function() {
@@ -45,23 +47,6 @@ dsApp.directive('ngConfirmClick', [
         }
     }
 ]);
-
-/*
-dsApp.config(['$routeProvider', function($routeProvider) {
-    $routeProvider.
-    when('/', {
-        templateUrl: '/tmpl/page-list.html',
-        controller: 'PageListCtrl'
-    }).
-    when('/:id', {
-        templateUrl: '/tmpl/page-detail.html',
-        controller: 'PageDetailCtrl'
-    }).
-    otherwise({
-        redirectTo: '/'
-    });
-}]);
-*/
 
 function ImportCtrl($scope, $modalInstance, $upload, doc) {
     $scope.doc = doc;
@@ -109,7 +94,7 @@ function ImportCtrl($scope, $modalInstance, $upload, doc) {
 };
 ImportCtrl.$inject = ['$scope', '$modalInstance', '$upload', 'doc'];
 
-function NewpageCtrl($scope, $modalInstance, $location, $http, doc) {
+function NewpageCtrl($scope, $modalInstance, $http, doc) {
     $scope.doc = doc;
     $scope.docid = doc._id;
     $scope.parent = null;
@@ -139,7 +124,7 @@ function NewpageCtrl($scope, $modalInstance, $location, $http, doc) {
     $scope.ok = function() {
         $http.post('/page', {
             _csrf: '<%=_csrf%>',
-            parent: $scope.parent.id,
+            parent: ($scope.parent ? $scope.parent.id : null),
             page: {
                 doc_id: doc._id,
                 name: $scope.name,
@@ -168,7 +153,7 @@ function NewpageCtrl($scope, $modalInstance, $location, $http, doc) {
         $scope.enddpopen = true;
     };
 };
-NewpageCtrl.$inject = ['$scope', '$modalInstance', '$location', '$http', 'doc'];
+NewpageCtrl.$inject = ['$scope', '$modalInstance', '$http', 'doc'];
 
 dsApp.controller('PageListCtrl', ['$scope', '$http', '$modal', 
 function($scope, $http, $modal) {
@@ -375,16 +360,15 @@ dsApp.filter('recurring', function() {
     }
 });
 
-dsApp.controller('PageDetailCtrl', ['$scope', '$http', '$modal', '$routeParams', '$location',
-function($scope, $http, $modal, $routeParams, $location) {
-    $http.get('/page/detail', {params: {id: $routeParams.id}}).success(function(page) {
+dsApp.controller('PageDetailCtrl', ['$scope', '$http', '$modal', 
+function($scope, $http, $modal) {
+    $http.get('/page/detail').success(function(page) {
         $scope.page = page;
         $scope.incomes = page.incomes;
         $scope.categories = page.categories;
         update();
     }).error(function(ret) {
         console.error(ret);
-        $location.path("/");
     });;
 
     //parse color like #ff1122, and return resaturated value
@@ -606,7 +590,7 @@ function($scope, $http, $modal, $routeParams, $location) {
                 $http.delete('/page/'+page._id, {
                     //can't pass param!! why!!
                 }).success(function() {
-                    $location.path("/"); //forward to page list - ng will reload the page list
+                    document.location = "/"; 
                 }).error(function(data, status, headers, config) {
                     alert('Oops.. Something went wrong! Please refer to dsBudget support forum.');
                     console.error(data);
@@ -698,7 +682,6 @@ function($scope, $http, $modal, $routeParams, $location) {
     </div>
 </form>
 </script>
-
 
 <div ng-repeat="doc in docs">
     <form class="form-inline pull-right">

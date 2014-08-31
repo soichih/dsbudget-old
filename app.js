@@ -1,6 +1,6 @@
 #!/bin/env node
 
-var sass = require('node-sass');
+var lessMiddleware = require('less-middleware');
 
 var express = require('express');
 var cookieParser = require('cookie-parser');
@@ -87,16 +87,34 @@ app.set('port', process.env.PORT || 3000);
 app.set('views', __dirname + '/views');
 app.set('view engine', 'ejs');
 
+
 app.use(compress());
+/*
 app.use(connectAssets({
   paths: [path.join(__dirname, 'public/css'), path.join(__dirname, 'public/js')],
   helperContext: app.locals
 }));
+*/
+/*
 app.use(sass.middleware({
     src: __dirname+'/public', //look for /public/*.scss
     dest: __dirname+'/public', //and put compiled in /public/*.css
     debug: true 
 }));
+*/
+
+app.use(lessMiddleware('/less', {
+    dest: '/css',
+    pathRoot: __dirname+'/public'
+    /*
+    preprocess: {
+        path: function(pathname, req) {
+            return pathname.replace('/stylesheets/', '/');
+        }
+    }
+    */
+}));
+
 app.use(logger('dev'));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -185,15 +203,21 @@ app.get('/list', pageController.getList);
 
 app.get('/page/:id', pageController.getPage);
 app.post('/page', pageController.postPage);
-app.get('/page/balance/:id', pageController.pageBalance);
-app.get('/page/detail', pageController.pageDetail);
-app.post('/expense', pageController.postExpense); 
+app.put('/page/:id', pageController.putPage);
+app.delete('/page/:id', pageController.deletePage);
+
+app.get('/page/balance/:id', pageController.getPageBalance);
+app.get('/page/detail/:id', pageController.getPageDetail);
+
+app.post('/expense/:cid', pageController.postExpense); 
+app.put('/expense/:cid/:eid', pageController.putExpense); 
 app.delete('/expense/:cid/:eid', pageController.deleteExpense);
-app.post('/income', pageController.postIncome);
+
 app.post('/category', pageController.postCategory);
 app.delete('/category/:id', pageController.deleteCategory);
+
+app.post('/income', pageController.postIncome);
 app.delete('/income/:id', pageController.deleteIncome);
-app.delete('/page/:id', pageController.deletePage);
 
 app.get('/signup', userController.getSignup);
 app.post('/signup', userController.postSignup);
@@ -204,12 +228,16 @@ app.get('/logout', userController.logout);
 
 app.get('/setpass', userController.getSetpass);
 app.post('/setpass', userController.postSetpass);
+
 app.get('/setting', userController.getSetting);
 app.post('/setting', userController.postSetting);
 
 app.get('/auth/error', userController.autherror);
 app.get('/auth/google', passport.authenticate('google', {scope: 'profile email'}));
-app.get('/auth/google/return', passport.authenticate('google', { successRedirect: '/', failureRedirect: '/auth/error' }));
+app.get('/auth/google/return', passport.authenticate('google', { 
+    successRedirect: '/', 
+    failureRedirect: '/auth/error' 
+}));
 
 var multipartMiddleware = multipart();
 app.post('/import/dsbudget', multipartMiddleware, importController.dsbudget);
