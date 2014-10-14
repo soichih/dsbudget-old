@@ -4,7 +4,8 @@ var crypto = require('crypto');
 var nodemailer = require('nodemailer');
 var passport = require('passport');
 var secrets = require('../config/secrets');
-var Doc = require('../models/doc');
+
+var Doc = require('../models/Doc');
 
 //this page does more than just displaying the home page.
 //it make sure everything is setup correctly, and if not, it fixes it, or redirect user to right place to fixe them.
@@ -35,7 +36,6 @@ exports.index = function(req, res) {
 };
 
 exports.about = function(req, res) {
-    res.render('about.ejs', {menu: "about"});
+    res.render('about', {title: "home", menu: "about"});
 };
-
 

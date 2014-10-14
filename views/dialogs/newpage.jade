@@ -1,0 +1,31 @@
+form(ng-submit="ok()")
+  .modal-header
+    h3 New Page
+  .modal-body
+    .form-group
+      label(for="importtype") Parent Page
+      select.form-control(ng-model="$parent.parent",ng-options="page.name for page in doc.pages | orderBy:'-end_date'")
+        option(value="") (Blank Page)
+    .form-group
+      label Page Name
+      input(type="text" ng-model="$parent.name" required).form-control 
+    .form-group
+      label Note
+      input(type="text" ng-model="$parent.desc").form-control
+    .form-group
+      lable Start Date
+      p.input-group
+        input(type="text" ng-model="$parent.start_date" max-date="$parent.end_date" datepicker-popup="longDate" is-open="$parent.startdpopen" required).form-control
+        span.input-group-btn
+          button(type="button" ng-click="openstartdatepicker($event)").btn.btn-default
+          i.glyphicon.glyphicon-calendar
+    .form-group
+      label End Date
+      p.input-group
+        input(type="text" ng-model="$parent.end_date" min-date="$parent.start_date" datepicker-popup="longDate" is-open="$parent.enddpopen" required).form-control
+        span.input-group-btn
+          button(type="button" ng-click="openenddatepicker($event)").btn.btn-default
+          i.glyphicon.glyphicon-calendar 
+  .modal-footer
+    button(type="submit").btn.btn-primary Create
+    button(type="button" ng-click="cancel()").btn.btn-default Cancel

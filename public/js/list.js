@@ -1,0 +1,574 @@
+var dsApp = angular.module('dsApp', ['ui.bootstrap', 'angularFileUpload']);
+
+dsApp.directive('ngConfirmClick', [
+    function() {
+        return {
+            priority: 1, //make sure this directive gets processed first
+            terminal: true, //don't let angular run ng-click
+            link: function (scope, element, attr) {
+                var msg = attr.ngConfirmClick || "Are you sure?";
+                var clickAction = attr.ngClick;
+                element.bind('click',function (event) {
+                    $(".dropdown").removeClass("open");
+                    if ( window.confirm(msg) ) {
+                        scope.$eval(clickAction)
+                        scope.$apply(); //scope application doesn't happen for some reason
+                    }
+                });
+            }
+        }
+    }
+]);
+
+function ImportCtrl($scope, $modalInstance, $upload, doc) {
+    $scope.doc = doc;
+    $scope.docid = doc._id;
+    $scope.importtypes = [
+        {name: "dsbudget"}
+    ];
+    $scope.importtype = $scope.importtypes[0]; //setting it to "dsbudget" won't work for some reason
+    $scope.fd = 2;
+
+    $scope.file = null;
+    $scope.onFileSelect = function($files) {
+        $scope.file = $files[0];
+    };
+    $scope.progress = 0;
+    $scope.show_progress = false;
+
+    $scope.ok = function() {
+        $scope.showprogress = true;
+        $scope.progress_action = "Uploading";
+        $upload.upload({
+            url: '/import/dsbudget', 
+            data: {
+                //_csrf: '<%=_csrf%>', //doesn't work here.. let's add to exclusion
+                docid: $scope.docid,
+                importtype: $scope.importtype.name,
+                fd: $scope.fd }, 
+            file: $scope.file,
+        }).progress(function(evt) {
+            $scope.progress = parseInt(100.0 * evt.loaded / evt.total);
+            if(evt.loaded == evt.total) {
+                $scope.progress_action = "Processing";
+            }
+        }).success(function(data, status, headers, config) {
+            $modalInstance.close($scope);
+        }).error(function(data, status, headers, config) {
+            alert(data);
+            $modalInstance.dismiss('error');
+        });
+    };
+
+    $scope.cancel = function () {
+        $modalInstance.dismiss('cancel');
+    };
+};
+ImportCtrl.$inject = ['$scope', '$modalInstance', '$upload', 'doc'];
+
+function NewpageCtrl($scope, $modalInstance, $http, doc) {
+    $scope.doc = doc;
+    $scope.docid = doc._id;
+    $scope.parent = null;
+    $scope.name = null;
+
+    var max_end_date = 0;
+    //select page with latest enddate
+    $scope.doc.pages.forEach(function(page) {
+        //console.log(page.name + " = " + page.end_date);
+        if(max_end_date < page.end_date) {
+            $scope.parent = page;
+            max_end_date = page.end_date;
+        }
+    });
+
+    //decide start / end dates
+    var now = new Date();
+    //set start to nearest 1st 
+    if(now.getDate() < 15) {
+        $scope.start_date = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else {
+        $scope.start_date = new Date(now.getFullYear(), now.getMonth()+1, 1);
+    }
+    $scope.end_date = new Date($scope.start_date);
+    $scope.end_date.setMonth($scope.end_date.getMonth()+1);
+
+    $scope.ok = function() {
+        $http.post('/page', {
+            //_csrf: '<%=_csrf%>',
+            parent: ($scope.parent ? $scope.parent.id : null),
+            page: {
+                doc_id: doc._id,
+                name: $scope.name,
+                desc: $scope.desc,
+                start_date: $scope.start_date.getTime(),
+                end_date: $scope.end_date.getTime()
+            }
+        }).success(function(newpageid) {
+            document.location = '/page/'+newpageid;
+        }).error(function(detail) {
+            alert('Failed to create page: '+detail);
+        });
+        $modalInstance.close($scope);
+    };
+    $scope.cancel = function () {
+        $modalInstance.dismiss('cancel');
+    };
+    $scope.openstartdatepicker = function($event) {
+        $event.preventDefault();
+        $event.stopPropagation();
+        $scope.startdpopen = true;
+    };
+    $scope.openenddatepicker = function($event) {
+        $event.preventDefault();
+        $event.stopPropagation();
+        $scope.enddpopen = true;
+    };
+};
+NewpageCtrl.$inject = ['$scope', '$modalInstance', '$http', 'doc'];
+
+dsApp.controller('PageListCtrl', ['$scope', '$http', '$modal', 
+function($scope, $http, $modal) {
+    $scope.loaddocs = function(){
+        $http.get('/docs').success(function(docs) {
+            $scope.docs = docs;
+        });
+    };
+    $scope.loaddocs();
+    $scope.orderProp = '-end_date';
+    $scope.openimport = function(doc) {
+        var modal = $modal.open({
+            templateUrl: 'importdialog',
+            controller: ImportCtrl,
+            resolve: {
+                doc: function() {
+                    return doc;
+                }
+            }
+        });
+        modal.result.then(function(scope) {
+            $scope.loaddocs();
+        });
+    };
+    $scope.opennew = function(doc) {
+        var modal = $modal.open({
+            templateUrl: 'newpagedialog',
+            controller: NewpageCtrl,
+            resolve: {
+                doc: function() {
+                    return doc;
+                }
+            }
+        });
+        modal.result.then(function(scope) {
+            $scope.loaddocs();
+        });
+    };
+}]);
+
+function ExpenseCtrl($scope, $modalInstance, category, expense) {
+    $scope.category = category;
+    $scope.expense = expense;
+    if(!$scope.expense) {
+        $scope._new = true;
+        $scope.expense = {
+            time: new Date().getTime()
+        };
+    }
+    $scope.opendatepicker = function($event) {
+        $event.preventDefault();
+        $event.stopPropagation();
+        $scope.dpopen = true;
+    };
+    $scope.remove = function() {
+        $modalInstance.dismiss('remove');
+    };
+    $scope.ok = function() {
+        $modalInstance.close($scope);
+    };
+    $scope.cancel = function() {
+        $modalInstance.dismiss('cancel');
+    };
+};
+ExpenseCtrl.$inject = ['$scope', '$modalInstance', 'category', 'expense'];
+
+function CategoryCtrl($scope, $modalInstance, page, category, recurring) {
+    $scope.page = page;
+    $scope.category = category;
+    if(!$scope.category) {
+        $scope._new = true;
+        $scope.category = {
+            page_id: page._id, 
+            recurring: recurring, 
+            color: "#909090",
+            expenses: []  
+        };
+    }
+    $scope.category.recurring = recurring;
+    $scope.opendatepicker = function($event) {
+        $event.preventDefault();
+        $event.stopPropagation();
+        $scope.dpopen = true;
+    };
+    $scope.remove = function() {
+        $modalInstance.dismiss('remove');
+    };
+    $scope.ok = function() {
+        $modalInstance.close($scope);
+    };
+    $scope.cancel = function() {
+        $modalInstance.dismiss('cancel');
+    };
+};
+CategoryCtrl.$inject = ['$scope', '$modalInstance', 'page', 'category', 'recurring'];
+
+function IncomeCtrl($scope, $http, $modalInstance, page, income) {
+
+    //load pages for balance income
+    $scope.pages = []; 
+    $http.get('/docs').success(function(docs) {
+        //find doc we want..
+        docs.forEach(function(doc) {
+            if(doc._id == page.doc_id) {
+                doc.pages.forEach(function(p) {
+                    //in order to avoid circular reference, let's allow user to select balance from previous months
+                    if(p.end_date <= page.start_date) {
+                        $scope.pages.push(p);
+                    }
+                });
+            }
+        });
+        if($scope.income.balance_from) {
+            //search for selected page
+            $scope.pages.forEach(function(p) {
+                if(p._id == $scope.income.balance_from) {
+                    $scope._balance_from = p; 
+                }
+            });
+        }
+    });
+
+    $scope.page = page;
+    $scope.income = income;
+    if(!$scope.income) {
+        $scope._new = true;
+        $scope.income = {page_id: page._id};
+    }
+
+    $scope._is_balance = false;
+    if($scope.income.balance_from) {
+        $scope._is_balance = true;
+    }
+
+    $scope.opendatepicker = function($event) {
+        $event.preventDefault();
+        $event.stopPropagation();
+        $scope.dpopen = true;
+    };
+    $scope.remove = function() {
+        $modalInstance.dismiss('remove');
+    };
+    $scope.ok = function() {
+        if($scope._balance_from) {
+            $scope.income.balance_from = $scope._balance_from._id;
+
+            //following will be reset when page is loaded to the actual value
+            $scope.income.page_name = $scope._balance_from.name; 
+            //get page balance
+            $http.get('/page/balance/'+$scope._balance_from._id).success(function(amount) {
+                $scope.income.amount = amount;
+                $modalInstance.close($scope);
+            });
+        } else {
+            $modalInstance.close($scope);
+        }
+    };
+    $scope.cancel = function() {
+        $modalInstance.dismiss('cancel');
+    };
+};
+IncomeCtrl.$inject = ['$scope', '$http', '$modalInstance', 'page', 'income'];
+
+function PageCtrl($scope, $modalInstance, page) {
+    //console.dir(page);
+    $scope.page = page;
+    if(!$scope.page) {
+        $scope._new = true;
+        $scope.page = {name: "New Page"};
+    }
+    $scope.openstartdatepicker = function($event) {
+        $event.preventDefault();
+        $event.stopPropagation();
+        $scope.startdpopen = true;
+    };
+    $scope.openenddatepicker = function($event) {
+        $event.preventDefault();
+        $event.stopPropagation();
+        $scope.enddpopen = true;
+    };
+    $scope.ok = function() {
+        $modalInstance.close($scope);
+    };
+    $scope.cancel = function() {
+        $modalInstance.dismiss('cancel');
+    };
+    $scope.remove = function() {
+        $modalInstance.dismiss('remove');
+    };
+};
+PageCtrl.$inject = ['$scope', '$modalInstance', 'page'];
+
+dsApp.filter('recurring', function() {
+    return function(input, b) {
+        var out = [];
+        if(input) {
+            for (var i = 0; i < input.length; i++) {
+                if(input[i].recurring == b){
+                    out.push(input[i]);
+                }
+            }
+        }
+        return out;
+    }
+});
+
+dsApp.controller('PageDetailCtrl', ['$scope', '$http', '$modal', 
+function($scope, $http, $modal) {
+    $http.get('/page/detail').success(function(page) {
+        $scope.page = page;
+        $scope.incomes = page.incomes;
+        $scope.categories = page.categories;
+        update();
+    }).error(function(ret) {
+        console.error(ret);
+    });;
+
+    //parse color like #ff1122, and return resaturated value
+    function lightcolor(color) {
+        var r = parseInt(color.substring(1,3), 16);
+        var g = parseInt(color.substring(3,5), 16);
+        var b = parseInt(color.substring(5,7), 16);
+
+        r = Math.floor((256+r)/2);
+        g = Math.floor((256+g)/2);
+        b = Math.floor((256+b)/2);
+
+        var hr = r.toString(16);
+        var hg = g.toString(16);
+        var hb = b.toString(16);
+        if (hr.length == 1) hr = '0' + hr;
+        if (hg.length == 1) hg = '0' + hg;
+        if (hb.length == 1) hb = '0' + hb;
+        var c = '#' + hr + hg + hb;
+        return '#' + hr + hg + hb;
+    }
+
+    //recompute various derived values
+    function update() {
+        var total_income = 0;
+        $scope.incomes.forEach(function(income) {
+            total_income += parseFloat(income.amount);
+        });
+        $scope._total_income = total_income;
+        $scope._total_recurring = 0;
+        $scope.categories.forEach(function(category) {
+            var total_expense = 0;
+            if(category.expenses) {
+                category.expenses.forEach(function(expense) {
+                    if(!expense.tentative) {
+                        total_expense += parseFloat(expense.amount);
+                    }
+                });
+            }
+            category._style = {"background-color": lightcolor(category.color)};
+            category._total = total_expense; 
+            category._remaining = category.budget - total_expense;
+            $scope._total_recurring += total_expense;
+        });
+    }
+
+    $scope.opencategory = function(page, recurring, category /*no cid! - see below*/) {
+        //cant' rely on cid because we display 2 lists (one for recurring and another for non-recurring..)
+        var modal = $modal.open({
+            templateUrl: 'categorydialog.html',
+            controller: CategoryCtrl,
+            resolve: {
+                page: function() { return page; },
+                category: function() { return angular.copy(category); }, //send copy instead of the actual $scope object
+                recurring: function() { return recurring; }
+            }
+        });
+        modal.result.then(function(scope) {
+            $http.post('/category', {
+                //_csrf: '<%=_csrf%>',
+                category: scope.category
+            }).success(function(newid) {
+                if(category == undefined) {
+                    scope.category._id = newid; //reset _id on expense I just added
+                }
+            }).error(function(data, status, headers, config) {
+                alert('Oops.. Something went wrong! Please refer to dsBudget support forum.');
+                console.error(data);
+            });
+
+            if(category != undefined) {
+                //need to find the idx - because I can't rely on cid
+                for(var x = 0;x < $scope.categories.length;x++) {
+                    if($scope.categories[x]._id == scope.category._id) {
+                        $scope.categories[x] = scope.category;
+                        break;
+                    }
+                };
+            } else {
+                $scope.categories.push(scope.category); //new
+            }
+            update();
+
+        }, function(dismiss) {
+            if(dismiss == "remove") {
+                $http.delete('/category/'+category._id, {
+                    //can't pass param!! why!!
+                }).success(function() {
+                    //as expected
+                }).error(function(data, status, headers, config) {
+                    alert('Oops.. Something went wrong! Please refer to dsBudget support forum.');
+                    console.error(data);
+                });
+                //need to find the idx - because I can't rely on cid
+                for(var x = 0;x < $scope.categories.length;x++) {
+                    if($scope.categories[x]._id == category._id) {
+                        $scope.categories.splice(x, 1);
+                        break;
+                    }
+                };
+                update();
+            }
+        });
+    };
+
+    $scope.openexpense = function(category, expense, eid) {
+        var modal = $modal.open({
+            templateUrl: 'expensedialog.html',
+            controller: ExpenseCtrl,
+            resolve: {
+                category: function() { return category; },
+                expense: function() { return angular.copy(expense); } //send copy instead of the actual $scope.expense
+            }
+        });
+        modal.result.then(function(scope) {
+            $http.post('/expense', {
+                //_csrf: '<%=_csrf%>',
+                catid: scope.category._id,
+                expense: scope.expense,
+                eid: eid
+            }).success(function(newid) {
+                if(eid == undefined) {
+                    scope.expense._id = newid; //reset _id on expense I just added
+                }
+            }).error(function(data, status, headers, config) {
+                alert('Oops.. Something went wrong! Please refer to dsBudget support forum.');
+                console.error(data);
+            });
+
+            if(eid != undefined) {
+                category.expenses[eid] = scope.expense;
+            } else {
+                category.expenses.push(scope.expense);
+            }
+            update();
+        }, function(dismiss) {
+            if(dismiss == "remove") {
+                $http.delete('/expense/'+category._id+'/'+eid, {
+                    //can't pass param!! why!!
+                }).success(function() {
+                    //as expected
+                }).error(function(data, status, headers, config) {
+                    alert('Oops.. Something went wrong! Please refer to dsBudget support forum.');
+                    console.error(data);
+                });
+                category.expenses.splice(eid, 1);
+                update();
+            }
+        });
+    };
+
+    $scope.openincome = function(page, income, iid) {
+        var modal = $modal.open({
+            templateUrl: 'incomedialog.html',
+            controller: IncomeCtrl,
+            resolve: {
+                page: function() { return page; },
+                income: function() { return angular.copy(income); } //send copy instead of the actual $scope object
+            }
+        });
+
+        modal.result.then(function(scope) {
+            $http.post('/income', {
+                //_csrf: '<%=_csrf%>',
+                income: scope.income
+            }).success(function(newid) {
+                if(iid == undefined) {
+                    scope.income._id = newid; //reset for adding new income
+                }
+            }).error(function(data, status, headers, config) {
+                alert('Oops.. Something went wrong! Please refer to dsBudget support forum.');
+                console.error(data);
+            });
+            if(iid != undefined) {
+                page.incomes[iid] = scope.income;
+            } else {
+                page.incomes.push(scope.income);
+            }
+            update();
+        }, function(dismiss) {
+            if(dismiss == "remove") {
+                $http.delete('/income/'+income._id, {
+                    //can't pass param!! why!!
+                }).success(function() {
+                    //as expected..
+                }).error(function(data, status, headers, config) {
+                    alert('Oops.. Something went wrong! Please refer to dsBudget support forum.');
+                    console.error(data);
+                });
+                $scope.incomes.splice(iid, 1);
+                update();
+            }
+        });
+    };
+
+    $scope.openpage = function(page) {
+        var modal = $modal.open({
+            templateUrl: 'pagedialog.html',
+            controller: PageCtrl,
+            resolve: {
+                page: function() { return angular.copy(page); } //send copy instead of the acturla page
+            }
+        });
+        modal.result.then(function(scope) {
+            $http.post('/page', {
+                //_csrf: '<%=_csrf%>',
+                page: scope.page
+            }).success(function() {
+                //as expected..
+            }).error(function(data, status, headers, config) {
+                alert('Oops.. Something went wrong! Please refer to dsBudget support forum.');
+                console.error(data);
+            });
+
+            $scope.page = scope.page;
+            update();
+        }, function(dismiss) {
+            if(dismiss == "remove") {
+                $http.delete('/page/'+page._id, {
+                    //can't pass param!! why!!
+                }).success(function() {
+                    document.location = "/"; 
+                }).error(function(data, status, headers, config) {
+                    alert('Oops.. Something went wrong! Please refer to dsBudget support forum.');
+                    console.error(data);
+                });
+            }
+        });
+    };
+}]);
+

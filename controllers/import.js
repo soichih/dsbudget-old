@@ -5,10 +5,10 @@ var extend = require('extend');
 var mongo = require('mongodb');
 var decimal = require('decimal');
 
-var Doc = require('../models/doc');
-var Page = require('../models/page');
-var Category = require('../models/category');
-var Income = require('../models/income');
+var Doc = require('../models/Doc');
+var Page = require('../models/Page');
+var Category = require('../models/Category');
+var Income = require('../models/Income');
 
 exports.dsbudget = function(req, res) {
     if(!req.user) return res.redirect('/');

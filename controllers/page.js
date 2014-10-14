@@ -3,10 +3,12 @@ var async = require('async');
 var crypto = require('crypto');
 var nodemailer = require('nodemailer');
 var passport = require('passport');
-var Doc = require('../models/doc');
-var Page = require('../models/page');
-var Income = require('../models/income');
-var Category = require('../models/category');
+
+var Doc = require('../models/Doc');
+var Page = require('../models/Page');
+var Income = require('../models/Income');
+var Category = require('../models/Category');
+
 var secrets = require('../config/secrets');
 
 function respond(res, err, data) {
@@ -26,7 +28,7 @@ function respond(res, err, data) {
 
 exports.getList = function(req, res) {
     if(!req.user) return res.redirect('/');
-    res.render("list.ejs", {menu: "page"});
+    res.render("list", {menu: "page"});
 };
 
 exports.getPage = function(req, res) {
@@ -53,7 +55,7 @@ exports.getPage = function(req, res) {
                     }, function(err) {
                         //lastly.. find all categories
                         Category.find({page_id: page.id}, function(err, categories) {
-                            res.render("page.ejs", {menu: "page", page: page, incomes: incomes, categories: categories});
+                            res.render("page", {menu: "page", page: page, incomes: incomes, categories: categories});
                         });
                     });
                 });

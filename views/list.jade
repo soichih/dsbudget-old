@@ -1,0 +1,16 @@
+extends layout
+
+block content
+  div(ng-app="dsApp",ng-controller="PageListCtrl",ng-cloak)
+    script(type='text/ng-template',id='importdialog')
+      include dialogs/import
+    script(type='text/ng-template',id='newpagedialog')
+      include dialogs/newpage
+
+    div(ng-repeat="doc in docs")
+      form.form-inline.pull-right
+        input.form-control(ng-model="page_query",placeholder="Page Filter")
+        .btn-group
+          button.btn.btn-default(type="button",ng-click="opennew(doc)") New Page
+          button.btn.btn-default(type="button",ng-click="openimport(doc)") Import
+      h1.doc-title {{doc.name}}

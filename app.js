@@ -1,7 +1,5 @@
 #!/bin/env node
 
-var lessMiddleware = require('less-middleware');
-
 var express = require('express');
 var cookieParser = require('cookie-parser');
 var compress = require('compression');
@@ -11,7 +9,6 @@ var logger = require('morgan');
 var errorHandler = require('errorhandler');
 var csrf = require('lusca').csrf();
 var methodOverride = require('method-override');
-var multipart = require('connect-multiparty');
 
 var _ = require('lodash');
 var MongoStore = require('connect-mongo')({ session: session });
@@ -22,47 +19,14 @@ var passport = require('passport');
 var expressValidator = require('express-validator');
 var connectAssets = require('connect-assets');
 
+var multipart = require('connect-multiparty');
+//var lessMiddleware = require('less-middleware');
+
 var homeController = require('./controllers/home');
 var pageController = require('./controllers/page');
 var userController = require('./controllers/user');
 var importController = require('./controllers/import');
-//var apiController = require('./controllers/api');
-//var contactController = require('./controllers/contact');
-
-/*
-//default
-var config = {
-port: 8080, //port to listen to
-host: os.hostname(), //host to listen to
-};
-
-//ports
-if(process.env.OPENSHIFT_NODEJS_PORT) config.port = process.env.OPENSHIFT_NODEJS_PORT;
-if(process.env.PORT) config.port = process.env.PORT;
-
-//host
-if(process.env.OPENSHIFT_NODEJS_IP) config.host = process.env.OPENSHIFT_NODEJS_IP;
-
-if(process.env.OPENSHIFT_APP_DNS) config.socket_url = process.env.OPENSHIFT_APP_DNS+":8443";
-    config.mongo_url = process.env.OPENSHIFT_MONGODB_DB_URL + process.env.OPENSHIFT_APP_NAME;
-    config.app_url = "https://"+config.host+":"+config.port;
-    config.cookie_secret = "hardcoded for now";
-} else if(process.env.HEROKU) {
-    console.log("seems to be running on heroku");
-
-    config.port = process.env.PORT;
-    config.mongo_url = process.env.MONGOLAB_URI;
-    config.app_url = 'https://dsbudget.herokuapp.com'; 
-    config.socket_url = 'dsbudget.herokuapp.com:443';
-    config.cookie_secret = process.env.COOKIE_SECRET;
-} else {
-    //assume local instance
-    config = require('./config.json');
-}
-
-//override config with env parameters
-config.port = process.env.PORT;
-*/
+var apiController = require('./controllers/api');
 
 var secrets = require('./config/secrets');
 var passportConf = require('./config/passport');
@@ -85,16 +49,13 @@ var week = day * 7;
 
 app.set('port', process.env.PORT || 3000);
 app.set('views', __dirname + '/views');
-app.set('view engine', 'ejs');
-
-
+//app.set('view engine', 'ejs');
+app.set('view engine', 'jade');
 app.use(compress());
-/*
 app.use(connectAssets({
   paths: [path.join(__dirname, 'public/css'), path.join(__dirname, 'public/js')],
   helperContext: app.locals
 }));
-*/
 /*
 app.use(sass.middleware({
     src: __dirname+'/public', //look for /public/*.scss
@@ -103,17 +64,12 @@ app.use(sass.middleware({
 }));
 */
 
+/*
 app.use(lessMiddleware('/less', {
     dest: '/css',
     pathRoot: __dirname+'/public'
-    /*
-    preprocess: {
-        path: function(pathname, req) {
-            return pathname.replace('/stylesheets/', '/');
-        }
-    }
-    */
 }));
+*/
 
 app.use(logger('dev'));
 app.use(bodyParser.json());
@@ -140,60 +96,23 @@ app.use(function(req, res, next) {
     csrf(req, res, next);
 });
 
+
 // make some common object available in views
 app.use(function(req, res, next) {
     res.locals.user = req.user;
+    res.locals.inspect = require('util').inspect;
     next();
 });
-/*
 app.use(function(req, res, next) {
-  // Remember original destination before login.
-  var path = req.path.split('/')[1];
-  if (/auth|login|logout|signup|fonts|favicon/i.test(path)) {
-    return next();
-  }
-  req.session.returnTo = req.path;
-  next();
+    // Remember original destination before login.
+    var path = req.path.split('/')[1];
+    if (/auth|login|logout|signup|fonts|favicon/i.test(path)) {
+        return next();
+    }
+    req.session.returnTo = req.path;
+    next();
 });
-*/
 app.use(express.static(__dirname+'/public', { maxAge: week }));
-
-//app.use(express.favicon());
-
-/*
-//share session with express (http://stackoverflow.com/questions/15093018/sessions-with-express-js-passport-js)
-io.configure(function (){
-    io.set("authorization", passport.authorize({
-        key:    'express.sid',       //the cookie where express (or connect) stores its session id.
-        secret: config.cookie_secret, //the session secret to parse the cookie
-        store:   sessionStore,     //the session store that express uses
-        fail: function(data, accept) {
-            // console.log("failed");
-            // console.log(data);// *optional* callbacks on success or fail
-            accept(null, false);             // second param takes boolean on whether or not to allow handshake
-        },
-        success: function(data, accept) {
-          //  console.log("success socket.io auth");
-         //   console.log(data);
-            accept(null, true);
-        }
-    }));
-});
-function hashpassword(pass, salt, callback) {
-    crypto.pbkdf2(pass, salt, 10000, 512, function(err, hash) {
-        if(err) {
-            callback(err);
-        } else {
-            callback(null, hash.toString());
-        }
-    });
-}
-*/
-
-//most of initialization happens after we connect to db.
-//mongo.MongoClient.connect(config.mongo_url, function(err, db) {
-//    if(err) throw err;
-//});
 
 app.get('/', homeController.index);
 app.get('/about', homeController.about);
@@ -219,25 +138,35 @@ app.delete('/category/:id', pageController.deleteCategory);
 app.post('/income', pageController.postIncome);
 app.delete('/income/:id', pageController.deleteIncome);
 
-app.get('/signup', userController.getSignup);
-app.post('/signup', userController.postSignup);
-
 app.get('/login', userController.getLogin);
 app.post('/login', userController.postLogin);
 app.get('/logout', userController.logout);
+app.get('/forgot', userController.getForgot);
+app.post('/forgot', userController.postForgot);
+app.get('/reset/:token', userController.getReset);
+app.post('/reset/:token', userController.postReset);
+app.get('/signup', userController.getSignup);
+app.post('/signup', userController.postSignup);
 
-app.get('/setpass', userController.getSetpass);
-app.post('/setpass', userController.postSetpass);
+app.get('/account', passportConf.isAuthenticated, userController.getAccount);
+app.post('/account/profile', passportConf.isAuthenticated, userController.postUpdateProfile);
+app.post('/account/password', passportConf.isAuthenticated, userController.postUpdatePassword);
+app.post('/account/delete', passportConf.isAuthenticated, userController.postDeleteAccount);
+app.get('/account/unlink/:provider', passportConf.isAuthenticated, userController.getOauthUnlink);
 
-app.get('/setting', userController.getSetting);
-app.post('/setting', userController.postSetting);
-
-app.get('/auth/error', userController.autherror);
+//oauth
 app.get('/auth/google', passport.authenticate('google', {scope: 'profile email'}));
 app.get('/auth/google/return', passport.authenticate('google', { 
-    successRedirect: '/', 
-    failureRedirect: '/auth/error' 
-}));
+    successRedirect: '/', failureRedirect: '/auth/error' }));
+app.get('/auth/twitter', passport.authenticate('twitter'));
+app.get('/auth/twitter/callback', passport.authenticate('twitter', { 
+    failureRedirect: '/auth/error' }), function(req, res) {
+    res.redirect(req.session.returnTo || '/');
+});
+
+//APIs
+app.get('/api/twitter', passportConf.isAuthenticated, passportConf.isAuthorized, apiController.getTwitter);
+//app.post('/api/twitter', passportConf.isAuthenticated, passportConf.isAuthorized, apiController.postTwitter);
 
 var multipartMiddleware = multipart();
 app.post('/import/dsbudget', multipartMiddleware, importController.dsbudget);
@@ -245,7 +174,7 @@ app.post('/import/dsbudget', multipartMiddleware, importController.dsbudget);
 /**
  * 500 Error Handler.
  */
-app.use(express.errorHandler());
+app.use(errorHandler());
 
 app.listen(app.get('port'), function() {
     console.log('Express server listening on port %d in %s mode', app.get('port'), app.get('env'));
